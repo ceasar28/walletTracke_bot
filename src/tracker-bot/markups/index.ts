@@ -1,4 +1,4 @@
 import { welcomeMessageMarkup } from './welcome';
-import {} from './transactionDetails';
+import { showTransactionDetails } from './transactionDetails';
 
-export { welcomeMessageMarkup };
+export { welcomeMessageMarkup, showTransactionDetails };

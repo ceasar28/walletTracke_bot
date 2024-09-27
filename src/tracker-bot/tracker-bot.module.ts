@@ -4,6 +4,6 @@ import { TrackerBotController } from './tracker-bot.controller';
 
 @Module({
   providers: [TrackerBotService],
-  controllers: [TrackerBotController]
+  controllers: [TrackerBotController],
 })
 export class TrackerBotModule {}
