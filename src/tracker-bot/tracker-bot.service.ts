@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as TelegramBot from 'node-telegram-bot-api';
+import { HttpService } from '@nestjs/axios';
 import { showTransactionDetails, welcomeMessageMarkup } from './markups';
 import * as dotenv from 'dotenv';
 dotenv.config();
@@ -14,7 +15,7 @@ export class TrackerBotService {
   private readonly trackerBot: TelegramBot;
   private logger = new Logger(TrackerBotService.name);
 
-  constructor() {
+  constructor(private readonly httpService: HttpService) {
     this.trackerBot = new TelegramBot(token, { polling: true });
     this.trackerBot.on('message', this.handleRecievedMessages);
     this.trackerBot.on('callback_query', this.handleButtonCommands);
@@ -74,9 +75,14 @@ export class TrackerBotService {
     try {
       console.log(command);
       switch (command) {
+        // case '/track':
+        //   await this.trackerBot.sendChatAction(chatId, 'typing');
+        //   return await this.sendTransactionDetails(chatId);
+
         case '/track':
           await this.trackerBot.sendChatAction(chatId, 'typing');
-          return await this.sendTransactionDetails(chatId);
+          console.log('hey');
+          return await this.queryBlockchain();
 
         default:
           return await this.trackerBot.sendMessage(
@@ -93,16 +99,82 @@ export class TrackerBotService {
     }
   };
 
-  sendTransactionDetails = async (chatId: number): Promise<unknown> => {
+  sendTransactionDetails = async (
+    chatId: number,
+    data: any,
+  ): Promise<unknown> => {
     try {
-      const data = {};
-      const transactionDetails = await showTransactionDetails(data);
+      const transactionDetails = await showTransactionDetails(data[0]);
 
       return await this.trackerBot.sendMessage(
         chatId,
         transactionDetails.message,
         { parse_mode: 'HTML' },
       );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  queryBlockchain = async (): Promise<unknown> => {
+    try {
+      const body = JSON.stringify({
+        query: `{
+  swaps(
+    orderBy: timestamp
+    orderDirection: desc
+    first: 1
+    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387", from: "0xae2fc483527b8ef99eb5d9b44875f005ba1fae13", amount0In: "0"}
+  ) {
+    id
+    transaction {
+      blockNumber
+      id
+      timestamp
+    }
+    timestamp
+    from
+    sender
+    amount0In
+    amount0Out
+    amount1In
+    amount1Out
+    amountUSD
+    to
+    pair {
+      id
+      token0 {
+        id
+        name
+        symbol
+        decimals
+        derivedETH
+      }
+      token1 {
+        id
+        name
+        symbol
+        decimals
+        derivedETH
+      }
+    }
+  }
+}`,
+      });
+      const data = await this.httpService.axiosRef.post(
+        process.env.GRAPHQL_URL,
+        body,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      console.log(data.data['data'].swaps);
+      if (data.data['data'].swaps) {
+        await this.sendTransactionDetails(6954169058, data.data['data'].swaps);
+      }
+      return data.data['data'].swaps;
     } catch (error) {
       console.log(error);
     }
