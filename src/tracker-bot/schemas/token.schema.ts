@@ -5,7 +5,7 @@ export type UserDocument = mongoose.HydratedDocument<Token>;
 
 @Schema()
 export class Token {
-  @Prop({ unique: true })
+  @Prop()
   tokenContractAddress: string;
   @Prop()
   tokenPairContractAddress: string;
@@ -33,6 +33,8 @@ export class Token {
   from: string;
   @Prop()
   to: string;
+  @Prop()
+  tokenAge: string;
 }
 
 @Schema()

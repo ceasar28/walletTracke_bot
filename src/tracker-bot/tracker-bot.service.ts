@@ -136,15 +136,30 @@ export class TrackerBotService {
           console.log(error);
         }
       });
-      return { status: 'success' };
+
+      return;
     } catch (error) {
       console.log(error);
     }
   };
 
+  // allUsers.forEach(async (user) => {
+  //   try {
+  //     return await this.trackerBot.sendMessage(
+  //       user.userChatId,
+  //       transactionDetails.message,
+  //       { parse_mode: 'HTML' },
+  //     );
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // });
+
   sendTokens = async (): Promise<unknown> => {
     try {
-      const allToken = await this.TokenModel.find();
+      const allToken = await this.TokenModel.find({
+        tokenPairContractAddress: '0x3d2823307ddd7e21334ac3d09c5dd73263d81074',
+      });
 
       return allToken;
     } catch (error) {
@@ -212,7 +227,7 @@ export class TrackerBotService {
           },
         },
       );
-      console.log(data.data['data'].swaps);
+      // console.log(data.data['data'].swaps);
 
       if (data.data['data'].swaps) {
         const swaps = data.data['data'].swaps;
@@ -228,12 +243,12 @@ export class TrackerBotService {
           ) {
             // check if it is the db and sawp count
             const tokenExist = await this.TokenModel.findOne({
-              tokenPairContractAddress: swap.pair.id,
+              tokenPairContractAddress: swap.pair.id.toLowerCase(),
             });
             if (!tokenExist) {
               const saveToken = new this.TokenModel({
-                tokenContractAddress: swap.pair.token0.id,
-                tokenPairContractAddress: swap.pair.id,
+                tokenContractAddress: swap.pair.token0.id.toLowerCase(),
+                tokenPairContractAddress: swap.pair.id.toLowerCase(),
                 swapHashes: [swap.id],
                 name: swap.pair.token0.name,
                 swapsCount: 1,
@@ -243,7 +258,6 @@ export class TrackerBotService {
                 symbol: swap.pair.token0.symbol,
                 decimal: swap.pair.token0.decimal,
               });
-
               saveToken.save();
             } else {
               // make sure not repeating swaps
