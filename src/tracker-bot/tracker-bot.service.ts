@@ -247,7 +247,7 @@ export class TrackerBotService {
                     twentiethBuyTime: swap.transaction.timestamp,
                   },
                 );
-                if (updateToken.swapsCount === 1) {
+                if (updateToken.swapsCount === 3) {
                   await this.sendTransactionDetails(updateToken);
                   //TODO: change details
                 }
