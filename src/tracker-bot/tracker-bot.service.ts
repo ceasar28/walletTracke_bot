@@ -157,9 +157,7 @@ export class TrackerBotService {
 
   sendTokens = async (): Promise<unknown> => {
     try {
-      const allToken = await this.TokenModel.find({
-        tokenPairContractAddress: '0x3d2823307ddd7e21334ac3d09c5dd73263d81074',
-      });
+      const allToken = await this.TokenModel.find();
 
       return allToken;
     } catch (error) {
