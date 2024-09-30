@@ -142,6 +142,16 @@ export class TrackerBotService {
     }
   };
 
+  sendTokens = async (): Promise<unknown> => {
+    try {
+      const allToken = await this.TokenModel.find();
+
+      return allToken;
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   queryBlockchain = async (): Promise<unknown> => {
     try {
       // Function to get the current time and 6 hours ago in UNIX timestamps
@@ -255,6 +265,7 @@ export class TrackerBotService {
             }
           }
         });
+        return;
 
         // const saveToken = new this.TokenModel({
         //   contractAddress: data.data['data'].swaps[0].pair.token0.id,

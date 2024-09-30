@@ -10,4 +10,10 @@ export class TrackerBotController {
   signUp() {
     return this.botService.queryBlockchain();
   }
+
+  @HttpCode(HttpStatus.OK)
+  @Get('tokens')
+  allToken() {
+    return this.botService.sendTokens();
+  }
 }
