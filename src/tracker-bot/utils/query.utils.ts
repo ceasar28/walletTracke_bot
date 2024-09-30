@@ -1,5 +1,5 @@
 export function isWithinOneHour(timestamp1, timestamp2) {
-  const oneHourInSeconds = 360000; // 1 hour in seconds
+  const oneHourInSeconds = 3600; // 1 hour in seconds
   const difference = Math.abs(timestamp1 - timestamp2); // Get the absolute difference
 
   return difference <= oneHourInSeconds;
