@@ -2,20 +2,29 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as TelegramBot from 'node-telegram-bot-api';
 import { HttpService } from '@nestjs/axios';
 import { showTransactionDetails, welcomeMessageMarkup } from './markups';
+import { Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Token, User } from './schemas/token.schema';
 import * as dotenv from 'dotenv';
+import { getTimestamps, isWithinOneHour } from './utils/query.utils';
 dotenv.config();
 
-const token =
-  process.env.NODE_ENV === 'production'
-    ? process.env.TELEGRAM_TOKEN
-    : process.env.TEST_TOKEN;
+// const token =
+//   process.env.NODE_ENV === 'production'
+//     ? process.env.TELEGRAM_TOKEN
+//     : process.env.TEST_TOKEN;
+const token = process.env.TEST_TOKEN;
 
 @Injectable()
 export class TrackerBotService {
   private readonly trackerBot: TelegramBot;
   private logger = new Logger(TrackerBotService.name);
 
-  constructor(private readonly httpService: HttpService) {
+  constructor(
+    private readonly httpService: HttpService,
+    @InjectModel(Token.name) private readonly TokenModel: Model<Token>,
+    @InjectModel(User.name) private readonly UserModel: Model<User>,
+  ) {
     this.trackerBot = new TelegramBot(token, { polling: true });
     this.trackerBot.on('message', this.handleRecievedMessages);
     this.trackerBot.on('callback_query', this.handleButtonCommands);
@@ -82,7 +91,18 @@ export class TrackerBotService {
         case '/track':
           await this.trackerBot.sendChatAction(chatId, 'typing');
           console.log('hey');
-          return await this.queryBlockchain();
+          const userExist = await this.UserModel.findOne({
+            userChatId: chatId,
+          });
+          if (!userExist) {
+            const savedUser = new this.UserModel({ userChatId: chatId });
+            return savedUser.save();
+          }
+          return userExist;
+        // setInterval(() => {
+        //   this.queryBlockchain();
+        // }, 60000); // Run every 60 seconds
+        // return await this.queryBlockchain();
 
         default:
           return await this.trackerBot.sendMessage(
@@ -99,18 +119,24 @@ export class TrackerBotService {
     }
   };
 
-  sendTransactionDetails = async (
-    chatId: number,
-    data: any,
-  ): Promise<unknown> => {
+  sendTransactionDetails = async (data: any): Promise<unknown> => {
     try {
-      const transactionDetails = await showTransactionDetails(data[0]);
+      const allUsers = await this.UserModel.find();
 
-      return await this.trackerBot.sendMessage(
-        chatId,
-        transactionDetails.message,
-        { parse_mode: 'HTML' },
-      );
+      const transactionDetails = await showTransactionDetails(data);
+
+      allUsers.forEach(async (user) => {
+        try {
+          return await this.trackerBot.sendMessage(
+            user.userChatId,
+            transactionDetails.message,
+            { parse_mode: 'HTML' },
+          );
+        } catch (error) {
+          console.log(error);
+        }
+      });
+      return { status: 'success' };
     } catch (error) {
       console.log(error);
     }
@@ -118,13 +144,18 @@ export class TrackerBotService {
 
   queryBlockchain = async (): Promise<unknown> => {
     try {
+      // Function to get the current time and 6 hours ago in UNIX timestamps
+      const { currentTime, sixHoursAgo } = getTimestamps();
+
       const body = JSON.stringify({
         query: `{
   swaps(
     orderBy: timestamp
     orderDirection: desc
-    first: 1
-    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387", from: "0xae2fc483527b8ef99eb5d9b44875f005ba1fae13", amount0In: "0"}
+    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387", from: "0xae2fc483527b8ef99eb5d9b44875f005ba1fae13",
+    timestamp_gte: ${sixHoursAgo},
+    timestamp_lte: ${currentTime},
+    amount0In: "0"}
   ) {
     id
     transaction {
@@ -143,6 +174,7 @@ export class TrackerBotService {
     to
     pair {
       id
+      createdAtTimestamp
       token0 {
         id
         name
@@ -171,10 +203,67 @@ export class TrackerBotService {
         },
       );
       console.log(data.data['data'].swaps);
+
       if (data.data['data'].swaps) {
-        await this.sendTransactionDetails(6954169058, data.data['data'].swaps);
+        const swaps = data.data['data'].swaps;
+
+        swaps.forEach(async (swap) => {
+          // filter swaps withing 1hr of creation
+          if (
+            isWithinOneHour(
+              +swap.transaction.timestamp,
+              +swap.pair.createdAtTimestamp,
+            ) &&
+            swap.pair.token0.id !== '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' //WETH
+          ) {
+            // check if it is the db and sawp count
+            const tokenExist = await this.TokenModel.findOne({
+              tokenPairContractAddress: swap.pair.id,
+            });
+            if (!tokenExist) {
+              const saveToken = new this.TokenModel({
+                tokenContractAddress: swap.pair.token0.id,
+                tokenPairContractAddress: swap.pair.id,
+                swapHashes: [swap.id],
+                name: swap.pair.token0.name,
+                swapsCount: 1,
+                tokenAge: swap.pair.createdAtTimestamp,
+                firstBuyHash: swap.transaction.id,
+                firstBuyTime: swap.transaction.timestamp,
+                symbol: swap.pair.token0.symbol,
+                decimal: swap.pair.token0.decimal,
+              });
+
+              saveToken.save();
+            } else {
+              // make sure not repeating swaps
+              if (!tokenExist.swapHashes.includes(swap.id)) {
+                // update token
+                const updateToken = await this.TokenModel.findByIdAndUpdate(
+                  tokenExist._id,
+                  {
+                    swapsCount: tokenExist.swapsCount + 1,
+                    swapHashes: [...tokenExist.swapHashes, swap.id],
+                    twentiethBuyTime: swap.transaction.timestamp,
+                  },
+                );
+                if (updateToken.swapsCount === 1) {
+                  await this.sendTransactionDetails(updateToken);
+                  //TODO: change details
+                }
+              }
+            }
+          }
+        });
+
+        // const saveToken = new this.TokenModel({
+        //   contractAddress: data.data['data'].swaps[0].pair.token0.id,
+        //   name: data.data['data'].swaps[0].pair.token0.name,
+        // });
+        // saveToken.save();
+        // await this.sendTransactionDetails(6954169058, data.data['data'].swaps);
       }
-      return data.data['data'].swaps;
+      return;
     } catch (error) {
       console.log(error);
     }
