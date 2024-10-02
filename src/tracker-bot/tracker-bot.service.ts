@@ -175,7 +175,7 @@ export class TrackerBotService {
   swaps(
     orderBy: timestamp
     orderDirection: desc
-    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387", from: "0xae2fc483527b8ef99eb5d9b44875f005ba1fae13",
+    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387",
     timestamp_gte: ${sixHoursAgo},
     timestamp_lte: ${currentTime},
     amount0In: "0"}
@@ -214,10 +214,10 @@ export class TrackerBotService {
       }
     }
   }
-}`,
+  }`,
       });
       const data = await this.httpService.axiosRef.post(
-        process.env.GRAPHQL_URL,
+        process.env.NODEQL_URL,
         body,
         {
           headers: {
@@ -269,7 +269,7 @@ export class TrackerBotService {
                     twentiethBuyTime: swap.transaction.timestamp,
                   },
                 );
-                if (updateToken.swapsCount === 12) {
+                if (updateToken.swapsCount === 20) {
                   await this.sendTransactionDetails(updateToken);
                   //TODO: change details
                 }
