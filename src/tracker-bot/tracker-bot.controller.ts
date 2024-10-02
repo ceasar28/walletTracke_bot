@@ -7,7 +7,7 @@ export class TrackerBotController {
 
   @HttpCode(HttpStatus.OK)
   @Get()
-  signUp() {
+  queryBlockchain() {
     return this.botService.queryBlockchain();
   }
 
