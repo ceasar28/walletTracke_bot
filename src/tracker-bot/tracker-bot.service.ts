@@ -217,7 +217,7 @@ export class TrackerBotService {
   }`,
       });
       const data = await this.httpService.axiosRef.post(
-        process.env.NODEQL_URL,
+        process.env.GRAPHQL_URL,
         body,
         {
           headers: {
