@@ -175,7 +175,7 @@ export class TrackerBotService {
   swaps(
     orderBy: timestamp
     orderDirection: desc
-    where: {sender: "0x1f2F10D1C40777AE1Da742455c65828FF36Df387",
+    where: {sender: ${process.env.MEV_wallet},
     timestamp_gte: ${sixHoursAgo},
     timestamp_lte: ${currentTime},
     amount0In: "0"}
