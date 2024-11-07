@@ -320,7 +320,7 @@ export class TrackerBotService {
                   },
                   { new: true }, // returns the updated document
                 );
-                if (updateToken.swapsCount === 3) {
+                if (updateToken.swapsCount === 10) {
                   await this.sendTransactionDetails(updateToken);
                   //TODO: change details
                 }
