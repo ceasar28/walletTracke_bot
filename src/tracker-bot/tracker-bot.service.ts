@@ -101,8 +101,13 @@ export class TrackerBotService {
           });
           if (!userExist) {
             const savedUser = new this.UserModel({ userChatId: chatId });
-            return savedUser.save();
+            savedUser.save();
+            return this.trackerBot.sendMessage(
+              chatId,
+              'Transactions tracking started',
+            );
           }
+          this.trackerBot.sendMessage(chatId, 'Transactions tracking started');
           return userExist;
         // setInterval(() => {
         //   this.queryBlockchain();
