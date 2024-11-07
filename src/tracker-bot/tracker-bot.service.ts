@@ -313,6 +313,7 @@ export class TrackerBotService {
                     swapHashes: [...tokenExist.swapHashes, swap.id],
                     twentiethBuyTime: swap.transaction.timestamp,
                   },
+                  { new: true }, // returns the updated document
                 );
                 if (updateToken.swapsCount === 4) {
                   await this.sendTransactionDetails(updateToken);
