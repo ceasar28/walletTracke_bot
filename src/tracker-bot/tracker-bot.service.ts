@@ -173,7 +173,7 @@ export class TrackerBotService {
   saveAlertedTokens = async () => {
     try {
       const alertedTokens = await this.TokenModel.find({
-        swapsCount: { $gte: 20 },
+        swapsCount: { $gte: 4 },
       });
 
       if (alertedTokens.length === 0) {
@@ -220,7 +220,7 @@ export class TrackerBotService {
   swaps(
     orderBy: timestamp
     orderDirection: desc
-    where: {sender: "${process.env.MEV_wallet}",
+    where: {to: "${process.env.MEV_wallet}",
     timestamp_gte: ${sixHoursAgo},
     timestamp_lte: ${currentTime},
     amount0In: "0"}
@@ -314,7 +314,7 @@ export class TrackerBotService {
                     twentiethBuyTime: swap.transaction.timestamp,
                   },
                 );
-                if (updateToken.swapsCount === 20) {
+                if (updateToken.swapsCount === 4) {
                   await this.sendTransactionDetails(updateToken);
                   //TODO: change details
                 }
