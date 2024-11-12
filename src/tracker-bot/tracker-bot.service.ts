@@ -413,7 +413,7 @@ export class TrackerBotService {
               const updatedHashes = [...swapHashes, tx.hash];
 
               // Immediately alert if the transaction count reaches 8
-              if (newSwapsCount === 10) {
+              if (newSwapsCount === 20) {
                 await this.sendTransactionDetails(
                   tokenInDb, // Include the token data for alert
                 );
@@ -447,7 +447,7 @@ export class TrackerBotService {
                 decimal: tx.tokenDecimal,
               });
               await saveToken.save();
-              if (saveToken.swapsCount >= 10) {
+              if (saveToken.swapsCount >= 20) {
                 await this.sendTransactionDetails(
                   saveToken, // Include the token data for alert
                 );
