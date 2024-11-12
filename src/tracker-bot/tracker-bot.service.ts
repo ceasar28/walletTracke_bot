@@ -396,8 +396,8 @@ export class TrackerBotService {
           ]),
         );
 
-        const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
-        //  const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+        // const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
+        const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
 
         // Use Promise.all for parallel asynchronous database operations
         const promises = transactions.map(async (tx: any) => {
