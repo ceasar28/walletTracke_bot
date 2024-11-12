@@ -8,15 +8,11 @@ export class Token {
   @Prop()
   tokenContractAddress: string;
   @Prop()
-  tokenPairContractAddress: string;
-  @Prop()
   swapHashes: string[];
   @Prop()
   name: string;
   @Prop()
   swapsCount: number;
-  @Prop()
-  tokenPairAge: string;
   @Prop()
   firstBuyHash: string;
   @Prop()

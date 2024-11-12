@@ -189,7 +189,6 @@ export class TrackerBotService {
       // Map alerted tokens to AlertedTokenModel structure
       const alertedTokenDocs = alertedTokens.map((token) => ({
         tokenContractAddress: token.tokenContractAddress,
-        tokenPairContractAddress: token.tokenPairContractAddress,
         swapHashes: token.swapHashes,
         name: token.name,
         swapsCount: token.swapsCount,
@@ -345,6 +344,232 @@ export class TrackerBotService {
       this.logger.log('Finished queryBlockchain execution');
     }
   };
+
+  getTokenCreationTime = async (tokenAddress: string): Promise<unknown> => {
+    const apiKey = process.env.ETHERSCAN_API_KEY;
+    const url = `https://api.etherscan.io/api?module=contract&action=getcontractcreation&contractaddresses=${tokenAddress}&apikey=${apiKey}`;
+    try {
+      const response = await this.httpService.axiosRef.get(url);
+      if (response.data.status === '1' && response.data.result.length > 0) {
+        const creationTime = response.data.result[0].timestamp;
+        return parseInt(creationTime); // Return Unix timestamp
+      }
+    } catch (error) {
+      console.error(`Error fetching creation time for ${tokenAddress}:`, error);
+    }
+    return null;
+  };
+  getRecentTokenTransactions = async () => {
+    const excludedTokens = [
+      '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH address
+      '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT address
+    ];
+    const sixHoursAgo = Math.floor(Date.now() / 1000) - 6 * 3600; // Unix timestamp for 6 hours ago
+    const apiKey = process.env.ETHERSCAN_API_KEY;
+    const url = `https://api.etherscan.io/api?module=account&action=tokentx&address=${process.env.MEV_wallet}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
+
+    try {
+      const response = await this.httpService.axiosRef.get(url);
+
+      if (response.data.result.length > 0) {
+        const transactions = response.data.result.filter((tx: any) => {
+          return (
+            parseInt(tx.timeStamp) >= sixHoursAgo &&
+            !excludedTokens.includes(tx.contractAddress.toLowerCase()) &&
+            tx.to.toLowerCase() === process.env.MEV_wallet.toLowerCase()
+          );
+        });
+
+        // Fetch all tokens from the database once instead of inside the loop
+        const tokenAddresses = transactions.map((tx: any) =>
+          tx.contractAddress.toLowerCase(),
+        );
+        const allTokens = await this.TokenModel.find({
+          tokenContractAddress: { $in: tokenAddresses },
+        });
+
+        // Create a map of tokens for faster lookup
+        const tokenMap = new Map(
+          allTokens.map((token: any) => [
+            token.tokenContractAddress.toLowerCase(),
+            token,
+          ]),
+        );
+
+        const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
+        //  const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+
+        // Use Promise.all for parallel asynchronous database operations
+        const promises = transactions.map(async (tx: any) => {
+          const tokenAddressLower = tx.contractAddress.toLowerCase();
+          const tokenInDb = tokenMap.get(tokenAddressLower);
+
+          if (tokenInDb) {
+            const { tokenAge, swapsCount, swapHashes } = tokenInDb;
+
+            // Check if the token was created within the last hour
+            if (tokenAge && +tokenAge >= oneHourAgo) {
+              const newSwapsCount = swapsCount + 1;
+              const updatedHashes = [...swapHashes, tx.hash];
+
+              // Immediately alert if the transaction count reaches 8
+              if (newSwapsCount === 10) {
+                await this.sendTransactionDetails(
+                  tokenInDb, // Include the token data for alert
+                );
+              }
+
+              // Update the token in the database with the new swap count and hashes
+              await this.TokenModel.findByIdAndUpdate(
+                tokenInDb._id,
+                {
+                  swapsCount: newSwapsCount,
+                  swapHashes: updatedHashes,
+                  twentiethBuyTime: tx.timeStamp,
+                },
+                { new: true },
+              );
+            }
+          } else {
+            // Fetch the token creation time and add to MongoDB if created within the last hour
+            const creationTime =
+              await this.getTokenCreationTime(tokenAddressLower);
+            if (creationTime && +creationTime >= oneHourAgo) {
+              const saveToken = new this.TokenModel({
+                tokenContractAddress: tokenAddressLower,
+                swapHashes: [tx.hash],
+                name: tx.tokenName,
+                swapsCount: 1,
+                tokenAge: creationTime,
+                firstBuyHash: tx.hash,
+                firstBuyTime: tx.timeStamp,
+                symbol: tx.tokenSymbol,
+                decimal: tx.tokenDecimal,
+              });
+              await saveToken.save();
+              if (saveToken.swapsCount >= 10) {
+                await this.sendTransactionDetails(
+                  saveToken, // Include the token data for alert
+                );
+              }
+            }
+          }
+        });
+
+        // Run all promises in parallel
+        await Promise.all(promises);
+
+        // Run all promises in parallel
+        await Promise.all(promises);
+      }
+    } catch (error) {
+      console.log(error);
+    } finally {
+      this.isRunning = false; // Reset the running flag after completion
+      this.logger.log('Finished queryBlockchain execution');
+    }
+  };
+
+  // getRecentTokenTransactions = async (): Promise<unknown> => {
+  //   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  //   const excludedTokens = [
+  //     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH address
+  //     '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT address
+  //   ];
+  //   const sixHoursAgo = Math.floor(Date.now() / 1000) - 6 * 3600; // Unix timestamp for 6 hours ago
+  //   const apiKey = process.env.ETHERSCAN_API_KEY;
+  //   const url = `https://api.etherscan.io/api?module=account&action=tokentx&address=${process.env.MEV_wallet}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
+
+  //   try {
+  //     const response = await this.httpService.axiosRef.get(url);
+
+  //     if (response.data.result.length > 0) {
+  //       // const transactions = response.data.result;
+  //       // Filter transactions within the last 6 hours
+  //       // const transactions = response.data.result.filter(
+  //       //   (tx: any) => parseInt(tx.timeStamp) >= sixHoursAgo,
+  //       // );
+  //       const transactions = response.data.result.filter((tx: any) => {
+  //         return (
+  //           parseInt(tx.timeStamp) >= sixHoursAgo &&
+  //           ![
+  //             '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+  //             '0xdac17f958d2ee523a2206206994597c13d831ec7',
+  //           ].includes(tx.contractAddress.toLowerCase()) &&
+  //           tx.to.toLowerCase() === process.env.MEV_wallet.toLowerCase()
+  //         );
+  //       });
+  //       // console.log(transactions);
+  //       const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+  //       const allTokens = await this.TokenModel.find();
+
+  //       for (const tx of transactions) {
+  //         const tokenSymbol = tx.tokenSymbol;
+  //         const tokenName = tx.tokenName;
+  //         const tokenAddress = tx.contractAddress;
+  //         // Check if token exists in MongoDB and if it's created within the last 1 hour
+  //         const tokenInDb = allTokens.find(
+  //           (t) =>
+  //             t.tokenContractAddress.toLowerCase() ===
+  //             tokenAddress.toLowerCase(),
+  //         );
+
+  //         // check if token exist
+  //         if (tokenInDb) {
+  //           const { tokenAge } = tokenInDb;
+
+  //           // Check if the token was created within the last hour
+  //           if (tokenAge && +tokenAge >= oneHourAgo) {
+  //             // Optionally, update transaction count in the database
+  //             const updateToken = await this.TokenModel.findByIdAndUpdate(
+  //               tokenInDb._id,
+  //               {
+  //                 swapsCount: tokenInDb.swapsCount + 1,
+  //                 swapHashes: [...tokenInDb.swapHashes, tx.hash],
+  //                 twentiethBuyTime: tx.timeStamp,
+  //               },
+  //               { new: true }, // returns the updated document
+  //             );
+  //             if (updateToken.swapsCount === 1) {
+  //               await this.sendTransactionDetails(updateToken);
+  //               //TODO: change details
+  //             }
+  //           }
+  //         } else {
+  //           // If token isn't in the database, fetch its creation time and add it to MongoDB
+  //           const creationTime = await this.getTokenCreationTime(tokenAddress);
+  //           if (creationTime && +creationTime >= oneHourAgo) {
+  //             // Add new token to the database
+  //             const saveToken = new this.TokenModel({
+  //               tokenContractAddress: tx.contractAddress.toLowerCase(),
+  //               swapHashes: [tx.hash],
+  //               name: tokenName,
+  //               swapsCount: 1,
+  //               tokenAge: creationTime,
+  //               firstBuyHash: tx.hash,
+  //               firstBuyTime: tx.timeStamp,
+  //               symbol: tokenSymbol,
+  //               decimal: tx.tokenDecimal,
+  //             });
+  //             saveToken.save();
+  //             console.log(
+  //               `Added new token ${tokenSymbol} created within 1 hour:`,
+  //               tx,
+  //             );
+  //           }
+  //         }
+  //       }
+  //       return;
+  //     }
+  //     return;
+  //   } catch (error) {
+  //     console.log(error);
+  //   } finally {
+  //     this.isRunning = false; // Reset the running flag after completion
+  //     this.logger.log('Finished queryBlockchain execution');
+  //   }
+  // };
+
   @Cron(`${process.env.CRON}`) // Executes every 30 seconds
   async handleCron() {
     if (this.isRunning) {
@@ -354,6 +579,6 @@ export class TrackerBotService {
 
     this.isRunning = true; // Set the running flag to true
 
-    await this.queryBlockchain();
+    await this.getRecentTokenTransactions();
   }
 }

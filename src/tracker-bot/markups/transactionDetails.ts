@@ -1,11 +1,9 @@
 import { timeAgo } from '../utils/query.utils';
 
 export const showTransactionDetails = async (data: any) => {
-  console.log('herebefore crash');
-  console.log('detail  :', data);
   const {
-    // tokenContractAddress,
-    tokenPairContractAddress,
+    tokenContractAddress,
+
     // swapHashes,
     name,
     symbol,
@@ -21,8 +19,8 @@ export const showTransactionDetails = async (data: any) => {
   const formattedTokenAge = timeAgo(tokenAge);
   console.log(formattedTokenAge, symbol, name, time);
   return {
-    message: `<b>Token Alert 🚨</b>\n<b>Pair Contract Address:</b> 
-<a href="https://etherscan.io/address/${tokenPairContractAddress}">${tokenPairContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Token Pair Age: </b>${formattedTokenAge}`,
+    message: `<b>Token Alert 🚨</b>\n<b>Contract Address:</b> 
+<a href="https://etherscan.io/address/${tokenContractAddress}">${tokenContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Token Age: </b>${formattedTokenAge}`,
     // keyboard: [
     //   [
     //     {
