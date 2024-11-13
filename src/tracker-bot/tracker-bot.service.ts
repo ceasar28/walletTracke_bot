@@ -6,7 +6,7 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { Token, User } from './schemas/token.schema';
 import * as dotenv from 'dotenv';
-import { getTimestamps, isWithinOneHour } from './utils/query.utils';
+// import { getTimestamps, isWithinOneHour } from './utils/query.utils';
 dotenv.config();
 import { Cron } from '@nestjs/schedule';
 import { AlertedToken } from './schemas/alertedToken.schema';
@@ -207,136 +207,136 @@ export class TrackerBotService {
     }
   };
 
-  queryBlockchain = async (): Promise<unknown> => {
-    try {
-      // Function to get the current time and 6 hours ago in UNIX timestamps
-      const { currentTime, sixHoursAgo } = getTimestamps();
+  // queryBlockchain = async (): Promise<unknown> => {
+  //   try {
+  //     // Function to get the current time and 6 hours ago in UNIX timestamps
+  //     const { currentTime, sixHoursAgo } = getTimestamps();
 
-      const body = JSON.stringify({
-        query: `{
-  swaps(
-    orderBy: timestamp
-    orderDirection: desc
-    where: {to: "${process.env.MEV_wallet}",
-    timestamp_gte: ${sixHoursAgo},
-    timestamp_lte: ${currentTime},
-    amount0In: "0"}
-  ) {
-    id
-    transaction {
-      blockNumber
-      id
-      timestamp
-    }
-    timestamp
-    from
-    sender
-    amount0In
-    amount0Out
-    amount1In
-    amount1Out
-    amountUSD
-    to
-    pair {
-      id
-      createdAtTimestamp
-      token0 {
-        id
-        name
-        symbol
-        decimals
-        derivedETH
-      }
-      token1 {
-        id
-        name
-        symbol
-        decimals
-        derivedETH
-      }
-    }
-  }
-  }`,
-      });
-      const data = await this.httpService.axiosRef.post(
-        process.env.GRAPHQL_URL,
-        body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-      // console.log(data.data['data'].swaps);
+  //     const body = JSON.stringify({
+  //       query: `{
+  // swaps(
+  //   orderBy: timestamp
+  //   orderDirection: desc
+  //   where: {to: "${process.env.MEV_wallet}",
+  //   timestamp_gte: ${sixHoursAgo},
+  //   timestamp_lte: ${currentTime},
+  //   amount0In: "0"}
+  // ) {
+  //   id
+  //   transaction {
+  //     blockNumber
+  //     id
+  //     timestamp
+  //   }
+  //   timestamp
+  //   from
+  //   sender
+  //   amount0In
+  //   amount0Out
+  //   amount1In
+  //   amount1Out
+  //   amountUSD
+  //   to
+  //   pair {
+  //     id
+  //     createdAtTimestamp
+  //     token0 {
+  //       id
+  //       name
+  //       symbol
+  //       decimals
+  //       derivedETH
+  //     }
+  //     token1 {
+  //       id
+  //       name
+  //       symbol
+  //       decimals
+  //       derivedETH
+  //     }
+  //   }
+  // }
+  // }`,
+  //     });
+  //     const data = await this.httpService.axiosRef.post(
+  //       process.env.GRAPHQL_URL,
+  //       body,
+  //       {
+  //         headers: {
+  //           'Content-Type': 'application/json',
+  //         },
+  //       },
+  //     );
+  //     // console.log(data.data['data'].swaps);
 
-      if (data.data['data'].swaps) {
-        const swaps = data.data['data'].swaps;
+  //     if (data.data['data'].swaps) {
+  //       const swaps = data.data['data'].swaps;
 
-        swaps.forEach(async (swap) => {
-          // filter swaps withing 1hr of creation
-          if (
-            isWithinOneHour(
-              +swap.transaction.timestamp,
-              +swap.pair.createdAtTimestamp,
-            ) &&
-            swap.pair.token0.id !== '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' //WETH
-          ) {
-            // check if it is the db and sawp count
-            const tokenExist = await this.TokenModel.findOne({
-              tokenPairContractAddress: swap.pair.id.toLowerCase(),
-            });
-            if (!tokenExist) {
-              const saveToken = new this.TokenModel({
-                tokenContractAddress: swap.pair.token0.id.toLowerCase(),
-                tokenPairContractAddress: swap.pair.id.toLowerCase(),
-                swapHashes: [swap.id],
-                name: swap.pair.token0.name,
-                swapsCount: 1,
-                tokenAge: swap.pair.createdAtTimestamp,
-                firstBuyHash: swap.transaction.id,
-                firstBuyTime: swap.transaction.timestamp,
-                symbol: swap.pair.token0.symbol,
-                decimal: swap.pair.token0.decimal,
-              });
-              saveToken.save();
-            } else {
-              // make sure not repeating swaps
-              if (!tokenExist.swapHashes.includes(swap.id)) {
-                // update token
-                const updateToken = await this.TokenModel.findByIdAndUpdate(
-                  tokenExist._id,
-                  {
-                    swapsCount: tokenExist.swapsCount + 1,
-                    swapHashes: [...tokenExist.swapHashes, swap.id],
-                    twentiethBuyTime: swap.transaction.timestamp,
-                  },
-                  { new: true }, // returns the updated document
-                );
-                if (updateToken.swapsCount === 8) {
-                  await this.sendTransactionDetails(updateToken);
-                  //TODO: change details
-                }
-              }
-            }
-          }
-        });
-        return;
+  //       swaps.forEach(async (swap) => {
+  //         // filter swaps withing 1hr of creation
+  //         if (
+  //           isWithinOneHour(
+  //             +swap.transaction.timestamp,
+  //             +swap.pair.createdAtTimestamp,
+  //           ) &&
+  //           swap.pair.token0.id !== '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' //WETH
+  //         ) {
+  //           // check if it is the db and sawp count
+  //           const tokenExist = await this.TokenModel.findOne({
+  //             tokenPairContractAddress: swap.pair.id.toLowerCase(),
+  //           });
+  //           if (!tokenExist) {
+  //             const saveToken = new this.TokenModel({
+  //               tokenContractAddress: swap.pair.token0.id.toLowerCase(),
+  //               tokenPairContractAddress: swap.pair.id.toLowerCase(),
+  //               swapHashes: [swap.id],
+  //               name: swap.pair.token0.name,
+  //               swapsCount: 1,
+  //               tokenAge: swap.pair.createdAtTimestamp,
+  //               firstBuyHash: swap.transaction.id,
+  //               firstBuyTime: swap.transaction.timestamp,
+  //               symbol: swap.pair.token0.symbol,
+  //               decimal: swap.pair.token0.decimal,
+  //             });
+  //             saveToken.save();
+  //           } else {
+  //             // make sure not repeating swaps
+  //             if (!tokenExist.swapHashes.includes(swap.id)) {
+  //               // update token
+  //               const updateToken = await this.TokenModel.findByIdAndUpdate(
+  //                 tokenExist._id,
+  //                 {
+  //                   swapsCount: tokenExist.swapsCount + 1,
+  //                   swapHashes: [...tokenExist.swapHashes, swap.id],
+  //                   twentiethBuyTime: swap.transaction.timestamp,
+  //                 },
+  //                 { new: true }, // returns the updated document
+  //               );
+  //               if (updateToken.swapsCount === 8) {
+  //                 await this.sendTransactionDetails(updateToken);
+  //                 //TODO: change details
+  //               }
+  //             }
+  //           }
+  //         }
+  //       });
+  //       return;
 
-        // const saveToken = new this.TokenModel({
-        //   contractAddress: data.data['data'].swaps[0].pair.token0.id,
-        //   name: data.data['data'].swaps[0].pair.token0.name,
-        // });
-        // saveToken.save();
-        // await this.sendTransactionDetails(6954169058, data.data['data'].swaps);
-      }
-      return;
-    } catch (error) {
-      console.log(error);
-    } finally {
-      this.isRunning = false; // Reset the running flag after completion
-      this.logger.log('Finished queryBlockchain execution');
-    }
-  };
+  //       // const saveToken = new this.TokenModel({
+  //       //   contractAddress: data.data['data'].swaps[0].pair.token0.id,
+  //       //   name: data.data['data'].swaps[0].pair.token0.name,
+  //       // });
+  //       // saveToken.save();
+  //       // await this.sendTransactionDetails(6954169058, data.data['data'].swaps);
+  //     }
+  //     return;
+  //   } catch (error) {
+  //     console.log(error);
+  //   } finally {
+  //     this.isRunning = false; // Reset the running flag after completion
+  //     this.logger.log('Finished queryBlockchain execution');
+  //   }
+  // };
 
   getTokenCreationTime = async (tokenAddress: string): Promise<unknown> => {
     const apiKey = process.env.ETHERSCAN_API_KEY;
@@ -404,7 +404,11 @@ export class TrackerBotService {
             const { tokenAge, swapsCount, swapHashes } = tokenInDb;
 
             // Check if the token was created within the last hour
-            if (tokenAge && +tokenAge >= oneHourAgo) {
+            if (
+              tokenAge &&
+              +tokenAge >= oneHourAgo &&
+              !swapHashes.includes(tx.hash)
+            ) {
               const newSwapsCount = swapsCount + 1;
               const updatedHashes = [...swapHashes, tx.hash];
 
