@@ -360,7 +360,7 @@ export class TrackerBotService {
       '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH address
       '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT address
     ];
-    const sixHoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600; // Unix timestamp for 6 hours ago
+    const sixHoursAgo = Math.floor(Date.now() / 1000) - 6 * 3600; // Unix timestamp for 6 hours ago
     const apiKey = process.env.ETHERSCAN_API_KEY;
     const url = `https://api.etherscan.io/api?module=account&action=tokentx&address=${process.env.MEV_wallet}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
 
@@ -392,8 +392,8 @@ export class TrackerBotService {
           ]),
         );
 
-        const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
-        // const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+        // const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
+        const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
 
         // Use Promise.all for parallel asynchronous database operations
         const promises = transactions.map(async (tx: any, index: number) => {
