@@ -350,7 +350,7 @@ export class TrackerBotService {
     const url = `https://api.etherscan.io/api?module=contract&action=getcontractcreation&contractaddresses=${tokenAddress}&apikey=${apiKey}`;
     try {
       const response = await this.httpService.axiosRef.get(url, {
-        timeout: 10000,
+        timeout: 30000,
       });
       if (response.data.status === '1' && response.data.result.length > 0) {
         const creationTime = response.data.result[0].timestamp;
