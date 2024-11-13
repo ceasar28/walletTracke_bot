@@ -15,7 +15,8 @@ import { AlertedToken } from './schemas/alertedToken.schema';
 //   process.env.NODE_ENV === 'production'
 //     ? process.env.TELEGRAM_TOKEN
 //     : process.env.TEST_TOKEN;
-const token = process.env.TEST_TOKEN;
+const token = process.env.TELEGRAM_TOKEN;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 @Injectable()
 export class TrackerBotService {
@@ -47,6 +48,7 @@ export class TrackerBotService {
         const replyMarkup = {
           inline_keyboard: welcome.keyboard,
         };
+
         return await this.trackerBot.sendMessage(msg.chat.id, welcome.message, {
           reply_markup: replyMarkup,
         });
@@ -131,23 +133,14 @@ export class TrackerBotService {
 
   sendTransactionDetails = async (data: any): Promise<unknown> => {
     try {
-      const allUsers = await this.UserModel.find();
-
       const transactionDetails = await showTransactionDetails(data);
-
-      allUsers.forEach(async (user) => {
-        try {
-          return await this.trackerBot.sendMessage(
-            user.userChatId,
-            transactionDetails.message,
-            { parse_mode: 'HTML' },
-          );
-        } catch (error) {
-          console.log(error);
-        }
-      });
-
-      return;
+      const channelId = process.env.CHANNEL_ID;
+      console.log(channelId);
+      return await this.trackerBot.sendMessage(
+        channelId,
+        transactionDetails.message,
+        { parse_mode: 'HTML' },
+      );
     } catch (error) {
       console.log(error);
     }
@@ -347,14 +340,15 @@ export class TrackerBotService {
 
   getTokenCreationTime = async (tokenAddress: string): Promise<unknown> => {
     const apiKey = process.env.ETHERSCAN_API_KEY;
-    const url = `https://api.etherscan.io/api?module=contract&action=getcontractcreation&contractaddresses=${tokenAddress}&apikey=${apiKey}`;
+    // const url = `https://api.etherscan.io/api?module=contract&action=getcontractcreation&contractaddresses=${tokenAddress}&apikey=${apiKey}`;
+    //improvided api for time stamp
+    const url2 = `https://api.etherscan.io/api?module=account&action=tokentx&contractaddress=${tokenAddress}&page=1&offset=1&startblock=0&endblock=99999999&sort=asc&apikey=${apiKey}`;
     try {
-      const response = await this.httpService.axiosRef.get(url, {
-        timeout: 30000,
-      });
-      if (response.data.status === '1' && response.data.result.length > 0) {
-        const creationTime = response.data.result[0].timestamp;
-        return parseInt(creationTime); // Return Unix timestamp
+      const response = await this.httpService.axiosRef.get(url2);
+      if (response.data.result.length > 0) {
+        // const creationTime = response.data.result[0].timestamp;
+        const creationTime2 = response.data.result[0].timeStamp;
+        return parseInt(creationTime2); // Return Unix timestamp
       }
     } catch (error) {
       console.error(`Error fetching creation time for ${tokenAddress}:`, error);
@@ -366,7 +360,7 @@ export class TrackerBotService {
       '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH address
       '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT address
     ];
-    const sixHoursAgo = Math.floor(Date.now() / 1000) - 6 * 3600; // Unix timestamp for 6 hours ago
+    const sixHoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600; // Unix timestamp for 6 hours ago
     const apiKey = process.env.ETHERSCAN_API_KEY;
     const url = `https://api.etherscan.io/api?module=account&action=tokentx&address=${process.env.MEV_wallet}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
 
@@ -398,12 +392,12 @@ export class TrackerBotService {
           ]),
         );
 
-        // const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
-        const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+        const oneHourAgo = Math.floor(Date.now() / 1000) - 6 * 3600;
+        // const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
 
         // Use Promise.all for parallel asynchronous database operations
-        const promises = transactions.map(async (tx: any) => {
-          const tokenAddressLower = tx.contractAddress.toLowerCase();
+        const promises = transactions.map(async (tx: any, index: number) => {
+          const tokenAddressLower = tx.contractAddress;
           const tokenInDb = tokenMap.get(tokenAddressLower);
 
           if (tokenInDb) {
@@ -433,6 +427,10 @@ export class TrackerBotService {
               );
             }
           } else {
+            // Apply rate limit for getTokenCreationTime
+            if (index % 5 === 0 && index !== 0) {
+              await sleep(200); // 200 ms delay for every 5 calls
+            }
             // Fetch the token creation time and add to MongoDB if created within the last hour
             const creationTime =
               await this.getTokenCreationTime(tokenAddressLower);
