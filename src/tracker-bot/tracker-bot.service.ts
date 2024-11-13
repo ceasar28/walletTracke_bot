@@ -15,7 +15,7 @@ import { AlertedToken } from './schemas/alertedToken.schema';
 //   process.env.NODE_ENV === 'production'
 //     ? process.env.TELEGRAM_TOKEN
 //     : process.env.TEST_TOKEN;
-const token = process.env.TELEGRAM_TOKEN;
+const token = process.env.TEST_TOKEN;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 @Injectable()
