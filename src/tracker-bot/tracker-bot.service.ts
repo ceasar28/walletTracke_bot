@@ -11,7 +11,7 @@ dotenv.config();
 import { Cron } from '@nestjs/schedule';
 import { AlertedToken } from './schemas/alertedToken.schema';
 
-// const token =
+// const token =ß
 //   process.env.NODE_ENV === 'production'
 //     ? process.env.TELEGRAM_TOKEN
 //     : process.env.TEST_TOKEN;
