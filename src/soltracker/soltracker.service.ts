@@ -1,132 +1,574 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Connection, PublicKey } from '@solana/web3.js';
-import BigNumber from 'bignumber.js';
+import {
+  Connection,
+  PublicKey,
+  GetVersionedTransactionConfig,
+} from '@solana/web3.js';
+// import BigNumber from 'bignumber.js';
+import { Cron } from '@nestjs/schedule';
+import { InjectModel } from '@nestjs/mongoose';
+import { Token } from './schemas/token.schema';
+import { Model } from 'mongoose';
+import { Metaplex } from '@metaplex-foundation/js';
+import * as TelegramBot from 'node-telegram-bot-api';
+import { showTransactionDetails, welcomeMessageMarkup } from './markups';
 
+const token = process.env.TEST_TOKEN;
 @Injectable()
 export class SoltrackerService {
+  private readonly trackerBot: TelegramBot;
   private readonly logger = new Logger(SoltrackerService.name);
   private readonly connection: Connection;
+  private isCircuitOpen = false;
 
-  constructor() {
-    this.connection = new Connection(
-      'https://api.mainnet-beta.solana.com',
-      'confirmed',
-    );
+  constructor(
+    @InjectModel(Token.name) private readonly TokenModel: Model<Token>,
+  ) {
+    this.trackerBot = new TelegramBot(token, { polling: true });
+    this.connection = new Connection(process.env.SOLANA_RPC, 'confirmed');
   }
 
-  async getTokenCreationTime(mintAddress: string): Promise<number | null> {
+  handleRecievedMessages = async (
+    msg: TelegramBot.Message,
+  ): Promise<unknown> => {
+    this.logger.debug(msg);
     try {
-      const signatures = await this.connection.getSignaturesForAddress(
-        new PublicKey(mintAddress),
-        { limit: 1 },
-      );
+      await this.trackerBot.sendChatAction(msg.chat.id, 'typing');
+      if (msg.text.trim() === '/start') {
+        const username: string = `${msg.from.username}`;
+        const welcome = await welcomeMessageMarkup(username);
+        const replyMarkup = {
+          inline_keyboard: welcome.keyboard,
+        };
 
-      if (signatures.length > 0) {
-        const transaction = await this.connection.getTransaction(
-          signatures[0].signature,
-          { commitment: 'confirmed' },
-        );
-        return transaction?.blockTime || null; // Return Unix timestamp
+        return await this.trackerBot.sendMessage(msg.chat.id, welcome.message, {
+          reply_markup: replyMarkup,
+        });
       }
     } catch (error) {
-      this.logger.error(
-        `Error fetching creation time for mint: ${mintAddress}`,
-        error,
+      console.log(error);
+      return await this.trackerBot.sendMessage(
+        msg.chat.id,
+        'There was an error processing your message',
       );
     }
-    return null;
+  };
+
+  sendTransactionDetails = async (data: any): Promise<unknown> => {
+    try {
+      const transactionDetails = await showTransactionDetails(data);
+      const channelId = process.env.CHANNEL_ID;
+
+      return await this.trackerBot.sendMessage(
+        channelId,
+        transactionDetails.message,
+        { parse_mode: 'HTML' },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    retries = 5,
+    delay = 500,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (error: any) {
+      if (retries > 0 && error.response?.status === 429) {
+        const retryDelay = delay * 2; // Exponentially increase delay
+        this.logger.warn(
+          `Rate limit exceeded. Retrying after ${retryDelay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        return this.retryWithBackoff(fn, retries - 1, retryDelay);
+      }
+      throw error; // Re-throw error if retries are exhausted or non-429 error occurs
+    }
   }
 
   async getWalletTransactions(walletAddress: string): Promise<any[]> {
     try {
-      const signatures = await this.connection.getSignaturesForAddress(
-        new PublicKey(walletAddress),
-        { limit: 50 }, // Adjust as needed
+      const signatures = await this.retryWithBackoff(() =>
+        this.connection.getSignaturesForAddress(new PublicKey(walletAddress), {
+          limit: 50,
+        }),
       );
+
+      const config: GetVersionedTransactionConfig = {
+        maxSupportedTransactionVersion: 0,
+      };
 
       const transactions = await Promise.all(
         signatures.map(async (sig) => {
-          return await this.connection.getTransaction(sig.signature, {
-            commitment: 'confirmed',
-          });
+          return await this.retryWithBackoff(() =>
+            this.connection.getParsedTransaction(sig.signature, config),
+          );
         }),
       );
 
       return transactions.filter((tx) => tx !== null);
     } catch (error) {
-      this.logger.error('Error fetching wallet transactions:', error);
+      this.logger.error(
+        `Error fetching transactions for wallet ${walletAddress}: ${error.message}`,
+        error.stack,
+      );
       return [];
     }
   }
 
+  // async trackTokens(walletAddress: string): Promise<void> {
+  //   if (this.isCircuitOpen) {
+  //     this.logger.warn('Circuit breaker active. Skipping requests.');
+  //     return;
+  //   }
+
+  //   try {
+  //     const transactions = await this.getWalletTransactions(walletAddress);
+  //     const _24HoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
+
+  //     // create a transaction map for easy loop throught
+  //     // const filteredTransactions = transactions.map((tx: any) => {
+  //     //   if (
+  //     //     tx?.meta?.postTokenBalances &&
+  //     //     tx?.meta?.postTokenBalances.length > 0
+  //     //   ) {
+  //     //     const tokenBought = tx.meta.postTokenBalances.find(
+  //     //       (b) => b.owner === walletAddress,
+  //     //     );
+
+  //     //     // const tokenSold = tx.meta.preTokenBalances.find(
+  //     //     //   (b) => b.owner === walletAddress,
+  //     //     // );
+
+  //     //     const timestamp = tx.blockTime
+  //     //       ? new Date(tx.blockTime * 1000).toISOString()
+  //     //       : 'Unknown';
+
+  //     //     if (
+  //     //       tokenBought &&
+  //     //       tokenBought.mint !== 'So11111111111111111111111111111111111111112'
+  //     //     ) {
+  //     //       if (!tokenBought.mint) {
+  //     //         this.logger.log('error');
+  //     //       }
+  //     //       return {
+  //     //         mintAddress: tokenBought.mint,
+  //     //         signature: tx.transaction.signatures[0],
+  //     //         timestamp: timestamp,
+  //     //         tokenAmount: tokenBought.uiTokenAmount.uiAmountString,
+  //     //       };
+  //     //     }
+  //     //   }
+  //     //   return;
+  //     // });
+  //     const filteredTransactions = transactions
+  //       .filter(
+  //         (tx: any) =>
+  //           tx?.meta?.postTokenBalances &&
+  //           tx?.meta?.postTokenBalances.length > 0 &&
+  //           tx.blockTime >= _24HoursAgo, // Ensure blockTime is less than 24hrs
+  //       )
+  //       .map((tx: any) => {
+  //         const tokenBought = tx.meta.postTokenBalances.find(
+  //           (b) =>
+  //             b.owner === walletAddress &&
+  //             b.mint !== 'So11111111111111111111111111111111111111112', // Exclude SOL mint
+  //         );
+
+  //         if (tokenBought && tokenBought.mint) {
+  //           return {
+  //             mintAddress: tokenBought.mint,
+  //             signature: tx.transaction.signatures[0],
+  //             timestamp: new Date(tx.blockTime * 1000).toISOString(),
+  //             tokenAmount: tokenBought.uiTokenAmount.uiAmountString,
+  //           };
+  //         }
+
+  //         return null; // Explicitly return null for invalid entries
+  //       })
+  //       .filter(Boolean); // Remove null values from the result
+
+  //     // Fetch all tokens from the database once instead of inside the loop
+  //     const tokenAddresses = filteredTransactions.map((tx: any) =>
+  //       tx.mintAddress.toLowerCase(),
+  //     );
+  //     const allTokens = await this.TokenModel.find({
+  //       tokenContractAddress: { $in: tokenAddresses },
+  //     });
+
+  //     // Create a map of tokens for faster lookup
+  //     const tokenMap = new Map(
+  //       allTokens.map((token: any) => [token.mintAddress.toLowerCase(), token]),
+  //     );
+
+  //     // Use Promise.all for parallel asynchronous database operations
+  //     const promises = filteredTransactions.map(async (tx: any) => {
+  //       const tokenAddressLower = tx.mintAddress.toLowerCase();
+  //       const tokenInDb = tokenMap.get(tokenAddressLower);
+
+  //       if (tokenInDb) {
+  //         const {
+  //           tokenContractAddress,
+  //           firstBuyTime,
+  //           tokenBalance,
+  //           swapSignatures,
+  //         } = tokenInDb;
+
+  //         if (!swapSignatures.includes(tx.signature)) {
+  //           const newTokenBalance = +tokenBalance + +tx.tokenAmount;
+  //           const updatedHashes = [...swapSignatures, tx.signature];
+
+  //           // Immediately alert if the transaction amount is above 20k
+  //           if (newTokenBalance >= 20000) {
+  //             await this.sendTransactionDetails(tokenInDb);
+  //             await this.sendAlert(
+  //               tokenContractAddress,
+  //               `${newTokenBalance}`,
+  //               firstBuyTime,
+  //               swapSignatures,
+  //             );
+  //             // await this.sendTransactionDetails(
+  //             //   tokenInDb, // Include the token data for alert
+  //             // );
+  //           }
+
+  //           // Update the token in the database with the new swap count and hashes
+  //           await this.TokenModel.findByIdAndUpdate(
+  //             tokenInDb._id,
+  //             {
+  //               swapHashes: updatedHashes,
+  //               alertBuyTime: tx.timeStamp,
+  //             },
+  //             { new: true },
+  //           );
+  //         }
+  //       } else {
+  //         const metaData = await this.getTokenMetadata(tx.mintAddress);
+
+  //         const savedToken = new this.TokenModel({
+  //           tokenContractAddress: tx.mintAddress,
+  //           swapSignatures: [tx.signature],
+  //           tokenBalance: tx.tokenAmount,
+  //           firstBuyTime: tx.timestamp,
+  //           alertBuyTime: tx.timestamp,
+  //           name: metaData.tokenName,
+  //           symbol: metaData.tokenSymbol,
+  //         });
+  //         await savedToken.save();
+  //         if (+savedToken.tokenBalance >= 20000 && !savedToken.alerted) {
+  //           const alerted = await this.sendTransactionDetails(savedToken);
+  //           await this.sendAlert(
+  //             savedToken.tokenContractAddress,
+  //             savedToken.tokenBalance,
+  //             savedToken.tokenAge,
+  //             savedToken.swapSignatures[0],
+  //           );
+  //           if (alerted) {
+  //             await this.TokenModel.updateOne(
+  //               { _id: savedToken._id },
+  //               { alerted: true },
+  //             );
+  //           }
+  //         }
+  //       }
+  //     });
+
+  //     // for (const tx of transactions) {
+  //     //   if (
+  //     //     tx?.meta?.postTokenBalances &&
+  //     //     tx?.meta?.postTokenBalances.length > 0
+  //     //   ) {
+  //     //     const tokenBought = tx.meta.postTokenBalances.find(
+  //     //       (b) => b.owner === walletAddress,
+  //     //     );
+
+  //     //     // const tokenSold = tx.meta.preTokenBalances.find(
+  //     //     //   (b) => b.owner === walletAddress,
+  //     //     // );
+
+  //     //     const timestamp = tx.blockTime
+  //     //       ? new Date(tx.blockTime * 1000).toISOString()
+  //     //       : 'Unknown';
+
+  //     //     if (
+  //     //       tokenBought &&
+  //     //       tokenBought.mint !== 'So11111111111111111111111111111111111111112'
+  //     //     ) {
+  //     //       if (!tokenBought.mint) {
+  //     //         this.logger.log(tokenBought);
+  //     //       }
+  //     //       const savedToken = new this.TokenModel({
+  //     //         tokenContractAddress: tokenBought.mint,
+  //     //         swapSignatures: [tx.transaction.signatures[0]],
+  //     //         tokenBalance: tokenBought.uiTokenAmount.uiAmountString,
+  //     //         firstBuyTime: timestamp,
+  //     //         alertBuyTime: timestamp,
+  //     //       });
+  //     //       await savedToken.save();
+  //     //       if (+savedToken.tokenBalance >= 20000) {
+  //     //         await this.sendAlert(
+  //     //           savedToken.tokenContractAddress,
+  //     //           savedToken.tokenBalance,
+  //     //           savedToken.tokenAge,
+  //     //           savedToken.swapSignatures[0],
+  //     //         );
+  //     //       }
+
+  //     //       this.logger.log(
+  //     //         `Wallet purchased SPL tokens:
+  //     //         - SPL Token Mint: ${tokenBought.mint}
+  //     //         - Tokens Bought: ${tokenBought.uiTokenAmount.uiAmountString}
+  //     //         - Purchase Time: ${timestamp}
+  //     //         - Transaction Signature: ${tx.transaction.signatures[0]}`,
+  //     //       );
+  //     //     }
+
+  //     //     // else {
+  //     //     //   console.log(tokenSold);
+  //     //     //   if (!tokenSold.mint) {
+  //     //     //     this.logger.log(tokenSold);
+  //     //     //   }
+  //     //     //   this.logger.log(
+  //     //     //     `Wallet SOLD SPL tokens:
+  //     //     //   - SPL Token Mint: ${tokenSold.mint}
+  //     //     //   - Tokens Bought: ${tokenSold.uiTokenAmount.uiAmountString}
+  //     //     //   - Purchase Time: ${timestamp}
+  //     //     //   - Transaction Signature: ${tx.transaction.signatures[0]}`,
+  //     //     //   );
+  //     //     // }
+
+  //     //     //           this.logger.log(
+  //     //     //             `Wallet purchased SPL tokens:
+  //     //     // - SPL Token Mint: ${tokenBought.mint}
+  //     //     // - Tokens Bought: ${tokenBought.uiTokenAmount.uiAmountString}
+  //     //     // - Purchase Time: ${timestamp}
+  //     //     // - Transaction Signature: ${tx.transaction.signatures[0]}`,
+  //     //     //           );
+
+  //     //     // await this.sendAlert(
+  //     //     //   solSpent.toFixed(),
+  //     //     //   mintAddress,
+  //     //     //   tokensBought.toFixed(),
+  //     //     //   timestamp,
+  //     //     //   tx.transaction.signatures[0],
+  //     //     // );
+  //     //   }
+  //     // }
+  //     // Run all promises in parallel
+  //     await Promise.all(promises);
+  //   } catch (error: any) {
+  //     if (error.response?.status === 429) {
+  //       this.isCircuitOpen = true;
+  //       this.logger.error('Rate limit exceeded. Circuit breaker activated.');
+  //       setTimeout(() => {
+  //         this.isCircuitOpen = false;
+  //         this.logger.log('Circuit breaker reset.');
+  //       }, 60000); // 1-minute cooldown
+  //     } else {
+  //       this.logger.error(
+  //         `Error in trackTokens: ${error.message}`,
+  //         error.stack,
+  //       );
+  //     }
+  //   }
+  // }
+
   async trackTokens(walletAddress: string): Promise<void> {
-    const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
-    const tokens: Map<string, { volume: BigNumber; creationTime: number }> =
-      new Map();
-
-    const transactions = await this.getWalletTransactions(walletAddress);
-
-    for (const tx of transactions) {
-      if (tx?.meta?.postTokenBalances) {
-        for (const balance of tx.meta.postTokenBalances) {
-          const mintAddress = balance.mint;
-
-          // Fetch token creation time if not already fetched
-          if (!tokens.has(mintAddress)) {
-            const creationTime = await this.getTokenCreationTime(mintAddress);
-            if (creationTime && creationTime >= oneDayAgo) {
-              tokens.set(mintAddress, {
-                volume: new BigNumber(0),
-                creationTime,
-              });
-            }
-          }
-
-          const tokenData = tokens.get(mintAddress);
-          if (tokenData) {
-            const preBalance = tx.meta.preTokenBalances.find(
-              (b) => b.mint === mintAddress,
-            );
-            const postBalance = tx.meta.postTokenBalances.find(
-              (b) => b.mint === mintAddress,
-            );
-
-            if (preBalance && postBalance) {
-              const change = new BigNumber(
-                postBalance.uiTokenAmount.uiAmountString,
-              ).minus(preBalance.uiTokenAmount.uiAmountString);
-
-              tokenData.volume = tokenData.volume.plus(change.abs());
-            }
-          }
-        }
-      }
+    if (this.isCircuitOpen) {
+      this.logger.warn('Circuit breaker active. Skipping requests.');
+      return;
     }
 
-    // Check token conditions
-    for (const [mint, { volume, creationTime }] of tokens) {
-      if (volume.gte(30000) && creationTime >= oneHourAgo) {
-        this.logger.log(
-          `Token ${mint} meets criteria: Volume $30k+, Age < 24h, Transactions < 1h`,
+    try {
+      const transactions = await this.getWalletTransactions(walletAddress);
+      const _24HoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
+
+      // Filter and map transactions within the last 24 hours
+      const filteredTransactions = transactions
+        .filter(
+          (tx: any) =>
+            tx?.meta?.postTokenBalances &&
+            tx?.meta?.postTokenBalances.length > 0 &&
+            tx.blockTime >= _24HoursAgo, // Transactions within 24 hours
+        )
+        .map((tx: any) => {
+          const tokenBought = tx.meta.postTokenBalances.find(
+            (b) =>
+              b.owner === walletAddress &&
+              b.mint !== 'So11111111111111111111111111111111111111112', // Exclude SOL
+          );
+
+          if (tokenBought && tokenBought.mint) {
+            return {
+              mintAddress: tokenBought.mint,
+              signature: tx.transaction.signatures[0],
+              timestamp: new Date(tx.blockTime * 1000).toISOString(),
+              tokenAmount: parseFloat(tokenBought.uiTokenAmount.uiAmountString),
+            };
+          }
+
+          return null; // Filter out invalid transactions
+        })
+        .filter(Boolean); // Remove null entries
+
+      // Exit early if no transactions
+      if (!filteredTransactions.length) {
+        this.logger.log('No relevant transactions found in the last 24 hours.');
+        return;
+      }
+
+      // Fetch tokens from the database
+      const tokenAddresses = filteredTransactions.map((tx) => tx.mintAddress);
+      const allTokens = await this.TokenModel.find({
+        tokenContractAddress: { $in: tokenAddresses },
+      });
+
+      // Create a map for fast lookups
+      const tokenMap = new Map(
+        allTokens.map((token: any) => [token.tokenContractAddress, token]),
+      );
+
+      // Prepare database operations
+      const promises = filteredTransactions.map(async (tx) => {
+        const tokenAddress = tx.mintAddress;
+        const tokenInDb = tokenMap.get(tokenAddress);
+
+        if (tokenInDb) {
+          const { tokenBalance, swapSignatures } = tokenInDb;
+
+          // Skip if signature already processed
+          if (swapSignatures.includes(tx.signature)) return;
+
+          const newTokenBalance = parseFloat(tokenBalance) + tx.tokenAmount;
+          const updatedHashes = [...swapSignatures, tx.signature];
+
+          // Alert if balance exceeds threshold
+          if (newTokenBalance >= 20000) {
+            await this.sendTransactionDetails(tokenInDb);
+            await this.sendAlert(
+              tokenInDb.tokenContractAddress,
+              `${newTokenBalance}`,
+              tokenInDb.firstBuyTime,
+              updatedHashes,
+            );
+          }
+
+          // Update token in database
+          await this.TokenModel.findByIdAndUpdate(
+            tokenInDb._id,
+            {
+              tokenBalance: newTokenBalance,
+              swapSignatures: updatedHashes,
+              alertBuyTime: tx.timestamp,
+            },
+            { new: true },
+          );
+        } else {
+          // Handle new token not in database
+          const metaData = await this.getTokenMetadata(tx.mintAddress);
+
+          const newToken = new this.TokenModel({
+            tokenContractAddress: tx.mintAddress,
+            swapSignatures: [tx.signature],
+            tokenBalance: tx.tokenAmount,
+            firstBuyTime: tx.timestamp,
+            alertBuyTime: tx.timestamp,
+            name: metaData.tokenName,
+            symbol: metaData.tokenSymbol,
+          });
+          await newToken.save();
+
+          // Alert if above threshold
+          if (parseFloat(newToken.tokenBalance) >= 20000) {
+            await this.sendTransactionDetails(newToken);
+            await this.sendAlert(
+              newToken.tokenContractAddress,
+              `${newToken.tokenBalance}`,
+              newToken.firstBuyTime,
+              newToken.swapSignatures,
+            );
+
+            // Mark as alerted
+            await this.TokenModel.updateOne(
+              { _id: newToken._id },
+              { alerted: true },
+            );
+          }
+        }
+      });
+
+      // Run all database operations in parallel
+      await Promise.all(promises);
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        this.isCircuitOpen = true;
+        this.logger.error('Rate limit exceeded. Circuit breaker activated.');
+        setTimeout(() => {
+          this.isCircuitOpen = false;
+          this.logger.log('Circuit breaker reset.');
+        }, 60000); // 1-minute cooldown
+      } else {
+        this.logger.error(
+          `Error in trackTokens: ${error.message}`,
+          error.stack,
         );
-        await this.sendAlert(mint, volume.toFixed(), creationTime);
       }
     }
   }
 
   async sendAlert(
-    mintAddress: string,
-    volume: string,
-    creationTime: number,
+    splMintAddress: string,
+    tokensBought: string,
+    timestamp: string,
+    signature: string[],
   ): Promise<void> {
-    const message = `🚨 Token Alert:
-- Mint: ${mintAddress}
-- Volume: $${volume}
-- Creation Time: ${new Date(creationTime * 1000).toISOString()}
-- Meets all conditions.`;
+    const message = `🚨 Token Purchase Alert:
+- SPL Token Mint: ${splMintAddress}
+- Tokens Bought: ${tokensBought}
+- Purchase Time: ${timestamp}
+- Transaction Signature: ${signature}`;
 
     this.logger.log(message);
-    // Implement your notification logic here (e.g., send to Telegram or Discord)
+    // Implement your notification logic (e.g., Telegram, Discord, etc.)
+  }
+
+  async getWalletTransaction(signature) {
+    const transaction = await this.connection.getParsedTransaction(signature);
+    console.log(transaction.meta.preTokenBalances);
+  }
+
+  async getTokenMetadata(mint: any) {
+    const metaplex = Metaplex.make(this.connection);
+
+    const mintAddress = new PublicKey(mint);
+
+    let tokenName;
+    let tokenSymbol;
+
+    const metadataAccount = metaplex
+      .nfts()
+      .pdas()
+      .metadata({ mint: mintAddress });
+
+    const metadataAccountInfo =
+      await this.connection.getAccountInfo(metadataAccount);
+
+    if (metadataAccountInfo) {
+      const token = await metaplex
+        .nfts()
+        .findByMint({ mintAddress: mintAddress });
+      tokenName = token.name;
+      tokenSymbol = token.symbol;
+      return { tokenName, tokenSymbol };
+    }
+  }
+
+  @Cron(process.env.CRON || '*/30 * * * * *') // Executes every 30 seconds
+  async handleCron(): Promise<void> {
+    this.logger.log('Executing token tracking cron job...');
+    await this.trackTokens(process.env.SOL_WALLET);
   }
 }

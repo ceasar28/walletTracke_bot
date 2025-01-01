@@ -9,6 +9,7 @@ import {
   AlertedToken,
   AlertedTokenSchema,
 } from './schemas/alertedToken.schema';
+import { SoltrackerModule } from 'src/soltracker/soltracker.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import {
     MongooseModule.forFeature([
       { name: AlertedToken.name, schema: AlertedTokenSchema },
     ]),
+    SoltrackerModule,
   ],
   providers: [TrackerBotService],
   controllers: [TrackerBotController],

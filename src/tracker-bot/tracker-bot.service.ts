@@ -574,15 +574,15 @@ export class TrackerBotService {
   //   }
   // };
 
-  @Cron(`${process.env.CRON}`) // Executes every 30 seconds
-  async handleCron() {
-    if (this.isRunning) {
-      this.logger.warn('Previous execution still running, skipping this round');
-      return;
-    }
+  // @Cron(`${process.env.CRON}`) // Executes every 30 seconds
+  // async handleCron() {
+  //   if (this.isRunning) {
+  //     this.logger.warn('Previous execution still running, skipping this round');
+  //     return;
+  //   }
 
-    this.isRunning = true; // Set the running flag to true
+  //   this.isRunning = true; // Set the running flag to true
 
-    await this.getRecentTokenTransactions();
-  }
+  //   await this.getRecentTokenTransactions();
+  // }
 }
