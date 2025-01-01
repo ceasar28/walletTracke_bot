@@ -446,13 +446,21 @@ export class SoltrackerService {
           const updatedHashes = [...swapSignatures, tx.signature];
 
           // Alert if balance exceeds threshold
-          if (newTokenBalance >= 20000) {
+          if (newTokenBalance >= 20000 && !tokenInDb.alerted) {
             await this.sendTransactionDetails(tokenInDb);
             await this.sendAlert(
               tokenInDb.tokenContractAddress,
               `${newTokenBalance}`,
               tokenInDb.firstBuyTime,
               updatedHashes,
+            );
+
+            await this.TokenModel.findByIdAndUpdate(
+              tokenInDb._id,
+              {
+                alerted: true,
+              },
+              { new: true },
             );
           }
 
