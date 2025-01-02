@@ -570,7 +570,7 @@ export class SoltrackerService {
     try {
       const apiKeyIndex = await this.CallModel.find();
 
-      const currentApiKey = apiKeys[apiKeyIndex[0].call] || apiKeys[0];
+      const currentApiKey = apiKeys[apiKeyIndex[0].call];
       const response = await this.httpService.axiosRef.get(swapUrl, {
         headers: { 'X-API-Key': currentApiKey },
       });
