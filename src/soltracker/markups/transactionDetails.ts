@@ -10,7 +10,7 @@ export const showTransactionDetails = async (data: any) => {
     tokenBalance,
   } = data;
   // Get the last transaction hash
-  const lastTransactionHash = swapSignatures[swapSignatures.length - 1];
+  const lastTransactionHash = swapSignatures[0];
   function formatTimestamp(isoTimestamp: string): string {
     const date = new Date(isoTimestamp);
 
