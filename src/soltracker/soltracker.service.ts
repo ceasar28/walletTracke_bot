@@ -607,7 +607,8 @@ export class SoltrackerService {
           const tokenInDb = tokenMap.get(tokenAddress);
 
           if (tokenInDb) {
-            const { tokenBalance, swapSignatures, usdAmount } = tokenInDb;
+            const { tokenBalance, swapSignatures, usdAmount, solAmount } =
+              tokenInDb;
 
             // Skip if signature already processed
             if (swapSignatures.includes(tx.transactionHash)) return;
@@ -617,7 +618,7 @@ export class SoltrackerService {
             const newUsdAmountBalance =
               parseFloat(usdAmount) + tx.sold.usdAmount;
             const newSolAmountBalance =
-              parseFloat(usdAmount) + parseFloat(tx.sold.amount);
+              parseFloat(solAmount) + parseFloat(tx.sold.amount);
             const updatedHashes = [...swapSignatures, tx.transactionHash];
 
             // Alert if balance exceeds threshold
@@ -673,7 +674,7 @@ export class SoltrackerService {
               alertBuyTime: tx.blockTimestamp,
               name: tx.bought.name,
               symbol: tx.bought.symbol,
-              usdAmount: tx.sold.usdAmount,
+              usdAmount: tx.sold.usdAmount.toString(),
               solAmount: tx.sold.amount,
               // SolSpent: tx.amountspent,
             });
