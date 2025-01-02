@@ -401,12 +401,23 @@ export class SoltrackerService {
               b.mint !== 'So11111111111111111111111111111111111111112', // Exclude SOL
           );
 
+          console.log(tx.transaction.signatures[0]);
+          console.log(tx.meta.preTokenBalances);
+          console.log(tx.meta.postTokenBalances);
+
+          // const solSpent = tx.meta.preTokenBalances.find(
+          //   (b) =>
+          //     b.owner === walletAddress &&
+          //     b.mint === 'So11111111111111111111111111111111111111112',
+          // );
+
           if (tokenBought && tokenBought.mint) {
             return {
               mintAddress: tokenBought.mint,
               signature: tx.transaction.signatures[0],
               timestamp: new Date(tx.blockTime * 1000).toISOString(),
               tokenAmount: parseFloat(tokenBought.uiTokenAmount.uiAmountString),
+              // amountspent: parseFloat(solSpent.uiTokenAmount.uiAmountString),
             };
           }
 
@@ -486,6 +497,7 @@ export class SoltrackerService {
             alertBuyTime: tx.timestamp,
             name: metaData.tokenName,
             symbol: metaData.tokenSymbol,
+            // SolSpent: tx.amountspent,
           });
           await newToken.save();
 
