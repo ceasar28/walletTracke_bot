@@ -625,7 +625,16 @@ export class SoltrackerService {
               parseFloat(newUsdAmountBalance) >= 20000 &&
               !tokenInDb.alerted
             ) {
-              await this.sendTransactionDetails(tokenInDb);
+              await this.sendTransactionDetails({
+                tokenContractAddress: tokenInDb.tokenContractAddress,
+                name: tokenInDb.name,
+                symbol: tokenInDb.symbol,
+                alertBuyTime: tx.blockTimestamp,
+                swapSignatures: updatedHashes,
+                solAmount: newSolAmountBalance,
+                usdAmount: newUsdAmountBalance,
+                tokenBalance: newTokenBalance,
+              });
               await this.sendAlert(
                 tokenInDb.tokenContractAddress,
                 `${newTokenBalance}`,
