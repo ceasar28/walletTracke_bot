@@ -7,11 +7,12 @@ import {
 // import BigNumber from 'bignumber.js';
 import { Cron } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
-import { Token } from './schemas/token.schema';
+import { Call, Token } from './schemas/token.schema';
 import { Model } from 'mongoose';
 import { Metaplex } from '@metaplex-foundation/js';
 import * as TelegramBot from 'node-telegram-bot-api';
 import { showTransactionDetails, welcomeMessageMarkup } from './markups';
+import { HttpService } from '@nestjs/axios';
 
 const token = process.env.TEST_TOKEN;
 @Injectable()
@@ -22,12 +23,29 @@ export class SoltrackerService {
   private isCircuitOpen = false;
 
   constructor(
+    private readonly httpService: HttpService,
     @InjectModel(Token.name) private readonly TokenModel: Model<Token>,
+    @InjectModel(Call.name) private readonly CallModel: Model<Call>,
   ) {
     this.trackerBot = new TelegramBot(token, { polling: true });
     this.connection = new Connection(process.env.SOLANA_RPC, 'confirmed');
+    this.initializeCallModel();
   }
 
+  private async initializeCallModel() {
+    try {
+      // Delete all existing Call documents
+      await this.CallModel.deleteMany();
+
+      // Create a new Call document
+      const newCall = new this.CallModel({ call: 0 });
+      await newCall.save();
+
+      console.log('Call model re-initialized successfully.');
+    } catch (error) {
+      console.error('Error initializing Call model:', error);
+    }
+  }
   handleRecievedMessages = async (
     msg: TelegramBot.Message,
   ): Promise<unknown> => {
@@ -376,166 +394,306 @@ export class SoltrackerService {
   //   }
   // }
 
+  // async trackTokens(walletAddress: string): Promise<void> {
+  //   if (this.isCircuitOpen) {
+  //     this.logger.warn('Circuit breaker active. Skipping requests.');
+  //     return;
+  //   }
+
+  //   try {
+  //     const transactions = await this.getWalletTransactions(walletAddress);
+  //     const _24HoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
+
+  //     // Filter and map transactions within the last 24 hours
+  //     const filteredTransactions = transactions
+  //       .filter(
+  //         (tx: any) =>
+  //           tx?.meta?.postTokenBalances &&
+  //           tx?.meta?.postTokenBalances.length > 0 &&
+  //           tx.blockTime >= _24HoursAgo, // Transactions within 24 hours
+  //       )
+  //       .map((tx: any) => {
+  //         const tokenBought = tx.meta.postTokenBalances.find(
+  //           (b) =>
+  //             b.owner === walletAddress &&
+  //             b.mint !== 'So11111111111111111111111111111111111111112', // Exclude SOL
+  //         );
+
+  //         console.log(tx.transaction.signatures[0]);
+  //         console.log(tx.meta.preTokenBalances);
+  //         console.log(tx.meta.postTokenBalances);
+
+  //         // const solSpent = tx.meta.preTokenBalances.find(
+  //         //   (b) =>
+  //         //     b.owner === walletAddress &&
+  //         //     b.mint === 'So11111111111111111111111111111111111111112',
+  //         // );
+
+  //         if (tokenBought && tokenBought.mint) {
+  //           return {
+  //             mintAddress: tokenBought.mint,
+  //             signature: tx.transaction.signatures[0],
+  //             timestamp: new Date(tx.blockTime * 1000).toISOString(),
+  //             tokenAmount: parseFloat(tokenBought.uiTokenAmount.uiAmountString),
+  //             // amountspent: parseFloat(solSpent.uiTokenAmount.uiAmountString),
+  //           };
+  //         }
+
+  //         return null; // Filter out invalid transactions
+  //       })
+  //       .filter(Boolean); // Remove null entries
+
+  //     // Exit early if no transactions
+  //     if (!filteredTransactions.length) {
+  //       this.logger.log('No relevant transactions found in the last 24 hours.');
+  //       return;
+  //     }
+
+  //     // Fetch tokens from the database
+  //     const tokenAddresses = filteredTransactions.map((tx) => tx.mintAddress);
+  //     const allTokens = await this.TokenModel.find({
+  //       tokenContractAddress: { $in: tokenAddresses },
+  //     });
+
+  //     // Create a map for fast lookups
+  //     const tokenMap = new Map(
+  //       allTokens.map((token: any) => [token.tokenContractAddress, token]),
+  //     );
+
+  //     // Prepare database operations
+  //     const promises = filteredTransactions.map(async (tx) => {
+  //       const tokenAddress = tx.mintAddress;
+  //       const tokenInDb = tokenMap.get(tokenAddress);
+
+  //       if (tokenInDb) {
+  //         const { tokenBalance, swapSignatures } = tokenInDb;
+
+  //         // Skip if signature already processed
+  //         if (swapSignatures.includes(tx.signature)) return;
+
+  //         const newTokenBalance = parseFloat(tokenBalance) + tx.tokenAmount;
+  //         const updatedHashes = [...swapSignatures, tx.signature];
+
+  //         // Alert if balance exceeds threshold
+  //         if (newTokenBalance >= 20000 && !tokenInDb.alerted) {
+  //           await this.sendTransactionDetails(tokenInDb);
+  //           await this.sendAlert(
+  //             tokenInDb.tokenContractAddress,
+  //             `${newTokenBalance}`,
+  //             tokenInDb.firstBuyTime,
+  //             updatedHashes,
+  //           );
+
+  //           await this.TokenModel.findByIdAndUpdate(
+  //             tokenInDb._id,
+  //             {
+  //               alerted: true,
+  //             },
+  //             { new: true },
+  //           );
+  //         }
+
+  //         // Update token in database
+  //         await this.TokenModel.findByIdAndUpdate(
+  //           tokenInDb._id,
+  //           {
+  //             tokenBalance: newTokenBalance,
+  //             swapSignatures: updatedHashes,
+  //             alertBuyTime: tx.timestamp,
+  //           },
+  //           { new: true },
+  //         );
+  //       } else {
+  //         // Handle new token not in database
+  //         const metaData = await this.getTokenMetadata(tx.mintAddress);
+
+  //         const newToken = new this.TokenModel({
+  //           tokenContractAddress: tx.mintAddress,
+  //           swapSignatures: [tx.signature],
+  //           tokenBalance: tx.tokenAmount,
+  //           firstBuyTime: tx.timestamp,
+  //           alertBuyTime: tx.timestamp,
+  //           name: metaData.tokenName,
+  //           symbol: metaData.tokenSymbol,
+  //           // SolSpent: tx.amountspent,
+  //         });
+  //         await newToken.save();
+
+  //         // Alert if above threshold
+  //         if (parseFloat(newToken.tokenBalance) >= 20000) {
+  //           await this.sendTransactionDetails(newToken);
+  //           await this.sendAlert(
+  //             newToken.tokenContractAddress,
+  //             `${newToken.tokenBalance}`,
+  //             newToken.firstBuyTime,
+  //             newToken.swapSignatures,
+  //           );
+
+  //           // Mark as alerted
+  //           await this.TokenModel.updateOne(
+  //             { _id: newToken._id },
+  //             { alerted: true },
+  //           );
+  //         }
+  //       }
+  //     });
+
+  //     // Run all database operations in parallel
+  //     await Promise.all(promises);
+  //   } catch (error: any) {
+  //     if (error.response?.status === 429) {
+  //       this.isCircuitOpen = true;
+  //       this.logger.error('Rate limit exceeded. Circuit breaker activated.');
+  //       setTimeout(() => {
+  //         this.isCircuitOpen = false;
+  //         this.logger.log('Circuit breaker reset.');
+  //       }, 60000); // 1-minute cooldown
+  //     } else {
+  //       this.logger.error(
+  //         `Error in trackTokens: ${error.message}`,
+  //         error.stack,
+  //       );
+  //     }
+  //   }
+  // }
+
   async trackTokens(walletAddress: string): Promise<void> {
-    if (this.isCircuitOpen) {
-      this.logger.warn('Circuit breaker active. Skipping requests.');
-      return;
-    }
+    const apiKeys = [
+      process.env.MORALIS_API_1,
+      process.env.MORALIS_API_2,
+      process.env.MORALIS_API_3,
+      process.env.MORALIS_API_4,
+    ];
+
+    const swapUrl = `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/swaps?order=DESC&transactionTypes=buy`;
 
     try {
-      const transactions = await this.getWalletTransactions(walletAddress);
-      const _24HoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
+      const apiKeyIndex = await this.CallModel.find();
 
-      // Filter and map transactions within the last 24 hours
-      const filteredTransactions = transactions
-        .filter(
-          (tx: any) =>
-            tx?.meta?.postTokenBalances &&
-            tx?.meta?.postTokenBalances.length > 0 &&
-            tx.blockTime >= _24HoursAgo, // Transactions within 24 hours
-        )
-        .map((tx: any) => {
-          const tokenBought = tx.meta.postTokenBalances.find(
-            (b) =>
-              b.owner === walletAddress &&
-              b.mint !== 'So11111111111111111111111111111111111111112', // Exclude SOL
-          );
-
-          console.log(tx.transaction.signatures[0]);
-          console.log(tx.meta.preTokenBalances);
-          console.log(tx.meta.postTokenBalances);
-
-          // const solSpent = tx.meta.preTokenBalances.find(
-          //   (b) =>
-          //     b.owner === walletAddress &&
-          //     b.mint === 'So11111111111111111111111111111111111111112',
-          // );
-
-          if (tokenBought && tokenBought.mint) {
-            return {
-              mintAddress: tokenBought.mint,
-              signature: tx.transaction.signatures[0],
-              timestamp: new Date(tx.blockTime * 1000).toISOString(),
-              tokenAmount: parseFloat(tokenBought.uiTokenAmount.uiAmountString),
-              // amountspent: parseFloat(solSpent.uiTokenAmount.uiAmountString),
-            };
-          }
-
-          return null; // Filter out invalid transactions
-        })
-        .filter(Boolean); // Remove null entries
-
-      // Exit early if no transactions
-      if (!filteredTransactions.length) {
-        this.logger.log('No relevant transactions found in the last 24 hours.');
-        return;
-      }
-
-      // Fetch tokens from the database
-      const tokenAddresses = filteredTransactions.map((tx) => tx.mintAddress);
-      const allTokens = await this.TokenModel.find({
-        tokenContractAddress: { $in: tokenAddresses },
+      const currentApiKey = apiKeys[apiKeyIndex[0].call] || apiKeys[0];
+      const response = await this.httpService.axiosRef.get(swapUrl, {
+        headers: { 'X-API-Key': currentApiKey },
       });
 
-      // Create a map for fast lookups
-      const tokenMap = new Map(
-        allTokens.map((token: any) => [token.tokenContractAddress, token]),
-      );
+      if (response.data.result.length > 0) {
+        const transactions = response.data.result;
+        const now = new Date(); // Current time
+        const twentyFourHoursAgo = new Date(
+          now.getTime() - 24 * 60 * 60 * 1000,
+        ); // 24 hours ago
 
-      // Prepare database operations
-      const promises = filteredTransactions.map(async (tx) => {
-        const tokenAddress = tx.mintAddress;
-        const tokenInDb = tokenMap.get(tokenAddress);
+        // Filter and map transactions within the last 24 hours
+        const filteredTransactions = transactions.filter((transaction) => {
+          const blockTimestamp = new Date(transaction.blockTimestamp);
+          return blockTimestamp >= twentyFourHoursAgo && blockTimestamp <= now;
+        });
 
-        if (tokenInDb) {
-          const { tokenBalance, swapSignatures } = tokenInDb;
+        // Fetch tokens from the database
+        const tokenAddresses = filteredTransactions.map(
+          (tx) => tx.bought.address,
+        );
 
-          // Skip if signature already processed
-          if (swapSignatures.includes(tx.signature)) return;
+        const allTokens = await this.TokenModel.find({
+          tokenContractAddress: { $in: tokenAddresses },
+        });
 
-          const newTokenBalance = parseFloat(tokenBalance) + tx.tokenAmount;
-          const updatedHashes = [...swapSignatures, tx.signature];
+        // Create a map for fast lookups
+        const tokenMap = new Map(
+          allTokens.map((token: any) => [token.tokenContractAddress, token]),
+        );
+        // Prepare database operations
+        const promises = filteredTransactions.map(async (tx) => {
+          const tokenAddress = tx.bought.address;
+          const tokenInDb = tokenMap.get(tokenAddress);
 
-          // Alert if balance exceeds threshold
-          if (newTokenBalance >= 20000 && !tokenInDb.alerted) {
-            await this.sendTransactionDetails(tokenInDb);
-            await this.sendAlert(
-              tokenInDb.tokenContractAddress,
-              `${newTokenBalance}`,
-              tokenInDb.firstBuyTime,
-              updatedHashes,
-            );
+          if (tokenInDb) {
+            const { tokenBalance, swapSignatures, usdAmount } = tokenInDb;
 
+            // Skip if signature already processed
+            if (swapSignatures.includes(tx.transactionHash)) return;
+
+            const newTokenBalance =
+              parseFloat(tokenBalance) + parseFloat(tx.bought.amount);
+            const newUsdAmountBalance =
+              parseFloat(usdAmount) + tx.sold.usdAmount;
+            const newSolAmountBalance =
+              parseFloat(usdAmount) + parseFloat(tx.sold.amount);
+            const updatedHashes = [...swapSignatures, tx.transactionHash];
+
+            // Alert if balance exceeds threshold
+            if (
+              parseFloat(newUsdAmountBalance) >= 20000 &&
+              !tokenInDb.alerted
+            ) {
+              await this.sendTransactionDetails(tokenInDb);
+              await this.sendAlert(
+                tokenInDb.tokenContractAddress,
+                `${newTokenBalance}`,
+                tokenInDb.firstBuyTime,
+                updatedHashes,
+              );
+
+              await this.TokenModel.findByIdAndUpdate(
+                tokenInDb._id,
+                {
+                  alerted: true,
+                },
+                { new: true },
+              );
+            }
+
+            // Update token in database
             await this.TokenModel.findByIdAndUpdate(
               tokenInDb._id,
               {
-                alerted: true,
+                tokenBalance: newTokenBalance,
+                swapSignatures: updatedHashes,
+                alertBuyTime: tx.blockTimestamp,
+                usdAmount: newUsdAmountBalance,
+                solAmount: newSolAmountBalance,
               },
               { new: true },
             );
+          } else {
+            // Handle new token not in database
+            const newToken = new this.TokenModel({
+              tokenContractAddress: tx.bought.address,
+              swapSignatures: [tx.transactionHash],
+              tokenBalance: tx.bought.amount,
+              firstBuyTime: tx.blockTimestamp,
+              alertBuyTime: tx.blockTimestamp,
+              name: tx.bought.name,
+              symbol: tx.bought.symbol,
+              usdAmount: tx.sold.usdAmount,
+              solAmount: tx.sold.amount,
+              // SolSpent: tx.amountspent,
+            });
+            await newToken.save();
+
+            // Alert if above threshold
+            if (parseFloat(newToken.usdAmount) >= 20000) {
+              await this.sendTransactionDetails(newToken);
+              await this.sendAlert(
+                newToken.tokenContractAddress,
+                `${newToken.tokenBalance}`,
+                newToken.firstBuyTime,
+                newToken.swapSignatures,
+              );
+
+              // Mark as alerted
+              await this.TokenModel.updateOne(
+                { _id: newToken._id },
+                { alerted: true },
+              );
+            }
           }
+        });
 
-          // Update token in database
-          await this.TokenModel.findByIdAndUpdate(
-            tokenInDb._id,
-            {
-              tokenBalance: newTokenBalance,
-              swapSignatures: updatedHashes,
-              alertBuyTime: tx.timestamp,
-            },
-            { new: true },
-          );
-        } else {
-          // Handle new token not in database
-          const metaData = await this.getTokenMetadata(tx.mintAddress);
-
-          const newToken = new this.TokenModel({
-            tokenContractAddress: tx.mintAddress,
-            swapSignatures: [tx.signature],
-            tokenBalance: tx.tokenAmount,
-            firstBuyTime: tx.timestamp,
-            alertBuyTime: tx.timestamp,
-            name: metaData.tokenName,
-            symbol: metaData.tokenSymbol,
-            // SolSpent: tx.amountspent,
-          });
-          await newToken.save();
-
-          // Alert if above threshold
-          if (parseFloat(newToken.tokenBalance) >= 20000) {
-            await this.sendTransactionDetails(newToken);
-            await this.sendAlert(
-              newToken.tokenContractAddress,
-              `${newToken.tokenBalance}`,
-              newToken.firstBuyTime,
-              newToken.swapSignatures,
-            );
-
-            // Mark as alerted
-            await this.TokenModel.updateOne(
-              { _id: newToken._id },
-              { alerted: true },
-            );
-          }
-        }
-      });
-
-      // Run all database operations in parallel
-      await Promise.all(promises);
-    } catch (error: any) {
-      if (error.response?.status === 429) {
-        this.isCircuitOpen = true;
-        this.logger.error('Rate limit exceeded. Circuit breaker activated.');
-        setTimeout(() => {
-          this.isCircuitOpen = false;
-          this.logger.log('Circuit breaker reset.');
-        }, 60000); // 1-minute cooldown
-      } else {
-        this.logger.error(
-          `Error in trackTokens: ${error.message}`,
-          error.stack,
-        );
+        // Run all database operations in parallel
+        await Promise.all(promises);
       }
+    } catch (error: any) {
+      console.log(error);
     }
   }
 
@@ -589,6 +747,23 @@ export class SoltrackerService {
   @Cron(process.env.CRON || '*/30 * * * * *') // Executes every 30 seconds
   async handleCron(): Promise<void> {
     this.logger.log('Executing token tracking cron job...');
+    // Call the token tracking function
     await this.trackTokens(process.env.SOL_WALLET);
+
+    // Fetch the current API call index from the database
+    const apiIndex = await this.CallModel.findOne(); // Assume only one document exists
+
+    if (!apiIndex) {
+      this.logger.error('Call document not found!');
+      return;
+    }
+
+    // Calculate the new call index
+    const newCall = (apiIndex.call + 1) % 4; // Increment and wrap back to 0 after 3
+
+    // Update the database with the new call index
+    await this.CallModel.findByIdAndUpdate(apiIndex._id, { call: newCall });
+
+    this.logger.log(`Updated call index to ${newCall}`);
   }
 }

@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import * as mongoose from 'mongoose';
 
 export type UserDocument = mongoose.HydratedDocument<Token>;
+export type CallDocument = mongoose.HydratedDocument<Call>;
 
 @Schema()
 export class Token {
@@ -20,7 +21,9 @@ export class Token {
   @Prop()
   tokenBalance: string;
   @Prop()
-  SolSpent: string;
+  solAmount: string;
+  @Prop()
+  usdAmount: string;
   @Prop()
   firstBuyTime: string;
   @Prop()
@@ -30,6 +33,14 @@ export class Token {
 }
 
 export const TokenSchema = SchemaFactory.createForClass(Token);
+
+@Schema()
+export class Call {
+  @Prop()
+  call: number;
+}
+
+export const CallSchema = SchemaFactory.createForClass(Call);
 
 // async trackTokens(walletAddress: string): Promise<void> {
 //   if (this.isCircuitOpen) {

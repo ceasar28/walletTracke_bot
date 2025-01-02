@@ -5,6 +5,8 @@ export const showTransactionDetails = async (data: any) => {
     symbol,
     alertBuyTime,
     swapSignatures,
+    solAmount,
+    usdAmount,
     tokenBalance,
   } = data;
 
@@ -22,7 +24,7 @@ export const showTransactionDetails = async (data: any) => {
   // const amount_out = formatNumberWithSuffix(+data.amount0Out);
   return {
     message: `<b>Token Alert 🚨</b>\n<b>Contract Address:</b> 
-<a href="https://solscan.io/token/${tokenContractAddress}">${tokenContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Amount Bought: </b>${tokenBalance} ${symbol}\n\n<b>Token Buy Time: </b>${formatedTime}\n<b>buyHash: </b><a href="https://solscan.io/tx/${swapSignatures[swapSignatures.length - 1]}">${swapSignatures[swapSignatures.length - 1]}</a>`,
+<a href="https://solscan.io/token/${tokenContractAddress}">${tokenContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Amount Bought: </b>${tokenBalance} ${symbol}\n<b>Total Sol spent: </b>${solAmount}(SOL) (~$${usdAmount})\n\n<b>Token Buy Time: </b>${formatedTime}\n<b>buyHash: </b><a href="https://solscan.io/tx/${swapSignatures[swapSignatures.length - 1]}">${swapSignatures[swapSignatures.length - 1]}</a>`,
     // keyboard: [
     //   [
     //     {
