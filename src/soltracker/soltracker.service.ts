@@ -582,10 +582,20 @@ export class SoltrackerService {
           now.getTime() - 24 * 60 * 60 * 1000,
         ); // 24 hours ago
 
-        // Filter and map transactions within the last 24 hours
+        // // Filter and map transactions within the last 24 hours
+        // const filteredTransactions = transactions.filter((transaction) => {
+        //   const blockTimestamp = new Date(transaction.blockTimestamp);
+        //   return blockTimestamp >= twentyFourHoursAgo && blockTimestamp <= now;
+        // });
+        // Filter and map transactions within the last 24 hours and matching Raydium AMM v4
         const filteredTransactions = transactions.filter((transaction) => {
           const blockTimestamp = new Date(transaction.blockTimestamp);
-          return blockTimestamp >= twentyFourHoursAgo && blockTimestamp <= now;
+          return (
+            blockTimestamp >= twentyFourHoursAgo &&
+            blockTimestamp <= now &&
+            transaction.exchangeAddress ===
+              '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'
+          );
         });
 
         // Fetch tokens from the database
