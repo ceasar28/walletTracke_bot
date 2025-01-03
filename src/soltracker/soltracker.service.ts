@@ -568,9 +568,9 @@ export class SoltrackerService {
     const swapUrl = `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/swaps?order=DESC&transactionTypes=buy`;
 
     try {
-      const apiKeyIndex = await this.CallModel.find();
+      const apiKeyIndex = await this.CallModel.findOne();
 
-      const currentApiKey = apiKeys[apiKeyIndex[0].call];
+      const currentApiKey = apiKeys[apiKeyIndex.call];
       const response = await this.httpService.axiosRef.get(swapUrl, {
         headers: { 'X-API-Key': currentApiKey },
       });
