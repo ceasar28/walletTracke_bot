@@ -30,6 +30,8 @@ export class Token {
   alertBuyTime: string;
   @Prop({ default: false })
   alerted: boolean;
+  @Prop({ default: false })
+  checked: boolean;
 }
 
 export const TokenSchema = SchemaFactory.createForClass(Token);

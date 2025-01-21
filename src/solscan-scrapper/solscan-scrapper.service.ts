@@ -5,6 +5,7 @@ export class SolscanScrapperService {
   constructor() {}
 
   async getTokenDetails(mint: string) {
+    console.log('called');
     const browser = await puppeteer.connect({
       browserWSEndpoint: process.env.SBR_WS_ENDPOINT,
     });

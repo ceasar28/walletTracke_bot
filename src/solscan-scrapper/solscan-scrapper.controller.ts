@@ -8,7 +8,8 @@ export class SolscanScrapperController {
   @Get('scrape')
   trackWallet() {
     return this.solscanScrapperService.getTokenDetails(
-      'CHgJUemeVxEWbQjahGoSvwg294dWieVhwx2QJBoJpump',
+      '9CPFCGNsm1giVELbtP1HiAqGbKHk3oaCpEYZYZgDpump',
     );
   }
 }
+//  'CHgJUemeVxEWbQjahGoSvwg294dWieVhwx2QJBoJpump'

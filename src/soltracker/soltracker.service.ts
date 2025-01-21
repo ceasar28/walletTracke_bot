@@ -634,29 +634,44 @@ export class SoltrackerService {
             // Alert if balance exceeds threshold
             if (
               parseFloat(newUsdAmountBalance) >= 20000 &&
-              !tokenInDb.alerted
+              !tokenInDb.alerted &&
+              !tokenInDb.checked
             ) {
-              await this.sendTransactionDetails({
-                tokenContractAddress: tokenInDb.tokenContractAddress,
-                name: tokenInDb.name,
-                symbol: tokenInDb.symbol,
-                alertBuyTime: tx.blockTimestamp,
-                swapSignatures: updatedHashes,
-                solAmount: newSolAmountBalance,
-                usdAmount: newUsdAmountBalance,
-                tokenBalance: newTokenBalance,
-              });
-              await this.sendAlert(
+              const meetsCriteria = await this.checkTokenTimeAndMarketCap(
                 tokenInDb.tokenContractAddress,
-                `${newTokenBalance}`,
-                tokenInDb.firstBuyTime,
-                updatedHashes,
               );
+              if (meetsCriteria === true) {
+                await this.sendTransactionDetails({
+                  tokenContractAddress: tokenInDb.tokenContractAddress,
+                  name: tokenInDb.name,
+                  symbol: tokenInDb.symbol,
+                  alertBuyTime: tx.blockTimestamp,
+                  swapSignatures: updatedHashes,
+                  solAmount: newSolAmountBalance,
+                  usdAmount: newUsdAmountBalance,
+                  tokenBalance: newTokenBalance,
+                });
+                await this.sendAlert(
+                  tokenInDb.tokenContractAddress,
+                  `${newTokenBalance}`,
+                  tokenInDb.firstBuyTime,
+                  updatedHashes,
+                );
 
+                await this.TokenModel.findByIdAndUpdate(
+                  tokenInDb._id,
+                  {
+                    alerted: true,
+                    checked: true,
+                  },
+                  { new: true },
+                );
+              }
               await this.TokenModel.findByIdAndUpdate(
                 tokenInDb._id,
                 {
-                  alerted: true,
+                  alerted: false,
+                  checked: true,
                 },
                 { new: true },
               );
@@ -692,18 +707,26 @@ export class SoltrackerService {
 
             // Alert if above threshold
             if (parseFloat(newToken.usdAmount) >= 20000) {
-              await this.sendTransactionDetails(newToken);
-              await this.sendAlert(
+              const meetsCriteria = await this.checkTokenTimeAndMarketCap(
                 newToken.tokenContractAddress,
-                `${newToken.tokenBalance}`,
-                newToken.firstBuyTime,
-                newToken.swapSignatures,
               );
-
-              // Mark as alerted
+              if (meetsCriteria === true) {
+                await this.sendTransactionDetails(newToken);
+                await this.sendAlert(
+                  newToken.tokenContractAddress,
+                  `${newToken.tokenBalance}`,
+                  newToken.firstBuyTime,
+                  newToken.swapSignatures,
+                );
+                // Mark as alerted
+                await this.TokenModel.updateOne(
+                  { _id: newToken._id },
+                  { alerted: true, checked: true },
+                );
+              }
               await this.TokenModel.updateOne(
                 { _id: newToken._id },
-                { alerted: true },
+                { checked: true },
               );
             }
           }
@@ -761,6 +784,55 @@ export class SoltrackerService {
       tokenName = token.name;
       tokenSymbol = token.symbol;
       return { tokenName, tokenSymbol };
+    }
+  }
+
+  async checkTokenTimeAndMarketCap(mint: string): Promise<boolean | string> {
+    // Function to check if the time is within the last 24 hours
+    function isWithinLast24Hours(epochTime: number): boolean {
+      const currentTime = Math.floor(Date.now() / 1000);
+      const twentyFourHoursAgo = currentTime - 24 * 60 * 60;
+      return epochTime >= twentyFourHoursAgo && epochTime <= currentTime;
+    }
+
+    // Function to check if market cap is above a threshold
+    function isMarketCapAboveThreshold(
+      marketCap: number,
+      threshold: number,
+    ): boolean {
+      return marketCap >= threshold;
+    }
+
+    try {
+      const URL = `https://pro-api.solscan.io/v2.0/token/meta?address=${mint}`;
+      const getMetadata = await this.httpService.axiosRef.get(URL, {
+        headers: { token: process.env.SOLSCAN_KEY },
+      });
+
+      const tokenData = getMetadata.data.data;
+
+      if (tokenData) {
+        const createdTime = tokenData.created_time;
+        const marketCap = tokenData.market_cap;
+
+        // Validate fields
+        if (createdTime && marketCap) {
+          if (
+            isWithinLast24Hours(createdTime) &&
+            isMarketCapAboveThreshold(Number(marketCap), 1_500_000)
+          ) {
+            return true;
+          }
+          return false;
+        } else {
+          return 'Missing required token data';
+        }
+      } else {
+        return 'No token data available';
+      }
+    } catch (error) {
+      console.error('Error fetching token metadata:', error);
+      throw new Error('Failed to fetch token metadata');
     }
   }
 
