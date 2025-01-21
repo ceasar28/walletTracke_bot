@@ -641,8 +641,7 @@ export class SoltrackerService {
             // Alert if balance exceeds threshold
             if (
               parseFloat(newUsdAmountBalance) >= 20000 &&
-              !tokenInDb.alerted &&
-              !tokenInDb.checked
+              !tokenInDb.alerted
             ) {
               const meetsCriteria = await this.checkTokenTimeAndMarketCap(
                 tokenInDb.tokenContractAddress,
