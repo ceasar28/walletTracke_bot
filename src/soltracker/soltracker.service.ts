@@ -843,6 +843,16 @@ export class SoltrackerService {
     }
   }
 
+  async getAllTokens() {
+    try {
+      const allToken = await this.TokenModel.find();
+
+      return allToken;
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   @Cron(process.env.CRON || '*/30 * * * * *') // Executes every 30 seconds
   async handleCron(): Promise<void> {
     this.logger.log('Executing token tracking cron job...');

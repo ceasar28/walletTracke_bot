@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Call, CallSchema, Token, TokenSchema } from './schemas/token.schema';
 import { DatabaseModule } from 'src/database/database.module';
 import { HttpModule } from '@nestjs/axios';
+import { SoltrackerController } from './soltracker.controller';
 
 @Module({
   imports: [
@@ -14,5 +15,6 @@ import { HttpModule } from '@nestjs/axios';
   ],
   providers: [SoltrackerService],
   exports: [SoltrackerService],
+  controllers: [SoltrackerController],
 })
 export class SoltrackerModule {}
