@@ -76,12 +76,19 @@ export class SoltrackerService {
     try {
       const transactionDetails = await showTransactionDetails(data);
       const channelId = process.env.CHANNEL_ID;
+      const channelIdMINE = process.env.CHANNEL_ID_MINE;
 
-      return await this.trackerBot.sendMessage(
-        channelId,
+      await this.trackerBot.sendMessage(channelId, transactionDetails.message, {
+        parse_mode: 'HTML',
+      });
+      await this.trackerBot.sendMessage(
+        channelIdMINE,
         transactionDetails.message,
-        { parse_mode: 'HTML' },
+        {
+          parse_mode: 'HTML',
+        },
       );
+      return;
     } catch (error) {
       console.log(error);
     }
