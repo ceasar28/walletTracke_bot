@@ -1,4 +1,4 @@
-export const showTransactionDetails = async (data: any) => {
+export const showTransactionDetails = async (data: any, reached?: boolean) => {
   const {
     tokenContractAddress,
     name,
@@ -25,7 +25,7 @@ export const showTransactionDetails = async (data: any) => {
   // const amount_out = formatNumberWithSuffix(+data.amount0Out);
   return {
     message: `<b>Token Alert 🚨</b>\n<b>Contract Address:</b> 
-<a href="https://solscan.io/token/${tokenContractAddress}">${tokenContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Amount Bought: </b>${tokenBalance} ${symbol}\n<b>Total Sol spent: </b>${solAmount}(SOL) (~$${usdAmount})\n\n<b>Token Buy Time: </b>${formatedTime}\n<b>last buyHash: </b><a href="https://solscan.io/tx/${lastTransactionHash}">${lastTransactionHash}</a>`,
+<a href="https://solscan.io/token/${tokenContractAddress}">${tokenContractAddress}</a>\n\n<b>Log:</b>\n<b>Token Name✅: </b>${name} (${symbol})\n<b>Amount Bought: </b>${tokenBalance} ${symbol}\n<b>Total Sol spent: </b>${solAmount}(SOL) (~$${usdAmount})\n\n<b>Token Buy Time: </b>${formatedTime}\n<b>last buyHash: </b><a href="https://solscan.io/tx/${lastTransactionHash}">${lastTransactionHash}</a>${reached ? `\n\n🔔 Just hit above 1Mmcap` : ``}`,
     // keyboard: [
     //   [
     //     {

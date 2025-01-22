@@ -72,9 +72,12 @@ export class SoltrackerService {
     }
   };
 
-  sendTransactionDetails = async (data: any): Promise<unknown> => {
+  sendTransactionDetails = async (
+    data: any,
+    reached?: boolean,
+  ): Promise<unknown> => {
     try {
-      const transactionDetails = await showTransactionDetails(data);
+      const transactionDetails = await showTransactionDetails(data, reached);
       const channelId = process.env.CHANNEL_ID;
       const channelIdMINE = process.env.CHANNEL_ID_MINE;
 
@@ -779,21 +782,32 @@ export class SoltrackerService {
         alerted: false,
         checked: true,
       });
-      const checkagain = NonAlertedToken.map(async (token) => {
+
+      const now = new Date(); // Current time
+      const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000); // 5hrs
+
+      const filteredTokens = NonAlertedToken.filter((token) => {
+        const blockTimestamp = new Date(token.firstBuyTime);
+        return blockTimestamp >= fiveHoursAgo && blockTimestamp <= now;
+      });
+      const checkagain = filteredTokens.map(async (token) => {
         const meetsCriteria = await this.checkTokenTimeAndMarketCap(
           token.tokenContractAddress,
         );
         if (meetsCriteria === true) {
-          await this.sendTransactionDetails({
-            tokenContractAddress: token.tokenContractAddress,
-            name: token.name,
-            symbol: token.symbol,
-            alertBuyTime: token.alertBuyTime,
-            swapSignatures: token.swapSignatures,
-            solAmount: token.solAmount,
-            usdAmount: token.usdAmount,
-            tokenBalance: token.tokenBalance,
-          });
+          await this.sendTransactionDetails(
+            {
+              tokenContractAddress: token.tokenContractAddress,
+              name: token.name,
+              symbol: token.symbol,
+              alertBuyTime: token.alertBuyTime,
+              swapSignatures: token.swapSignatures,
+              solAmount: token.solAmount,
+              usdAmount: token.usdAmount,
+              tokenBalance: token.tokenBalance,
+            },
+            true,
+          );
 
           await this.TokenModel.findByIdAndUpdate(
             token._id,
