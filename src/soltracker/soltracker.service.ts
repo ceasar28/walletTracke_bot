@@ -789,8 +789,7 @@ export class SoltrackerService {
             name: token.name,
             symbol: token.symbol,
             alertBuyTime: token.alertBuyTime,
-            swapSignatures:
-              token.swapSignatures[token.swapSignatures.length - 1],
+            swapSignatures: token.swapSignatures,
             solAmount: token.solAmount,
             usdAmount: token.usdAmount,
             tokenBalance: token.tokenBalance,
