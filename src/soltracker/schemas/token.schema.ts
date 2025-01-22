@@ -32,6 +32,8 @@ export class Token {
   alerted: boolean;
   @Prop({ default: false })
   checked: boolean;
+  @Prop({ default: false })
+  done20k: boolean;
 }
 
 export const TokenSchema = SchemaFactory.createForClass(Token);

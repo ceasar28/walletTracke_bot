@@ -669,32 +669,32 @@ export class SoltrackerService {
                   {
                     alerted: true,
                     checked: true,
+                    done20k: true,
                   },
                   { new: true },
                 );
-              }
-              await this.TokenModel.findByIdAndUpdate(
-                tokenInDb._id,
-                {
-                  alerted: false,
-                  checked: true,
-                },
-                { new: true },
-              );
-            }
 
-            // Update token in database
-            await this.TokenModel.findByIdAndUpdate(
-              tokenInDb._id,
-              {
-                tokenBalance: newTokenBalance,
-                swapSignatures: updatedHashes,
-                alertBuyTime: tx.blockTimestamp,
-                usdAmount: newUsdAmountBalance,
-                solAmount: newSolAmountBalance,
-              },
-              { new: true },
-            );
+                return;
+              } else {
+                // Update token in database
+                await this.TokenModel.findByIdAndUpdate(
+                  tokenInDb._id,
+                  {
+                    tokenBalance: newTokenBalance,
+                    swapSignatures: updatedHashes,
+                    alertBuyTime: tx.blockTimestamp,
+                    usdAmount: newUsdAmountBalance,
+                    solAmount: newSolAmountBalance,
+                    alerted: false,
+                    checked: true,
+                    done20k: false,
+                  },
+                  { new: true },
+                );
+
+                return;
+              }
+            }
           } else {
             // Handle new token not in database
             const newToken = new this.TokenModel({
@@ -716,6 +716,7 @@ export class SoltrackerService {
               const meetsCriteria = await this.checkTokenTimeAndMarketCap(
                 newToken.tokenContractAddress,
               );
+
               if (meetsCriteria === true) {
                 await this.sendTransactionDetails(newToken);
                 await this.sendAlert(
@@ -727,14 +728,18 @@ export class SoltrackerService {
                 // Mark as alerted
                 await this.TokenModel.updateOne(
                   { _id: newToken._id },
-                  { alerted: true, checked: true },
+                  { alerted: true, checked: true, done20k: true },
                 );
+                return;
+              } else {
+                await this.TokenModel.updateOne(
+                  { _id: newToken._id },
+                  { checked: true, done20k: true },
+                );
+                return;
               }
-              await this.TokenModel.updateOne(
-                { _id: newToken._id },
-                { checked: true },
-              );
             }
+            return;
           }
         });
 
@@ -767,6 +772,51 @@ export class SoltrackerService {
     console.log(transaction.meta.preTokenBalances);
   }
 
+  async checkNonAlertedTokens() {
+    try {
+      const NonAlertedToken = await this.TokenModel.find({
+        done20k: true,
+        alerted: false,
+        checked: true,
+      });
+      const checkagain = NonAlertedToken.map(async (token) => {
+        const meetsCriteria = await this.checkTokenTimeAndMarketCap(
+          token.tokenContractAddress,
+        );
+        if (meetsCriteria === true) {
+          await this.sendTransactionDetails({
+            tokenContractAddress: token.tokenContractAddress,
+            name: token.name,
+            symbol: token.symbol,
+            alertBuyTime: token.alertBuyTime,
+            swapSignatures:
+              token.swapSignatures[token.swapSignatures.length - 1],
+            solAmount: token.solAmount,
+            usdAmount: token.usdAmount,
+            tokenBalance: token.tokenBalance,
+          });
+
+          await this.TokenModel.findByIdAndUpdate(
+            token._id,
+            {
+              alerted: true,
+              checked: true,
+              done20k: true,
+            },
+            { new: true },
+          );
+
+          return;
+        }
+        return;
+      });
+
+      await Promise.all(checkagain);
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   async getTokenMetadata(mint: any) {
     const metaplex = Metaplex.make(this.connection);
 
@@ -797,7 +847,7 @@ export class SoltrackerService {
     // Function to check if the time is within the last 24 hours
     function isWithinLast24Hours(epochTime: number): boolean {
       const currentTime = Math.floor(Date.now() / 1000);
-      const twentyFourHoursAgo = currentTime - 24 * 60 * 60;
+      const twentyFourHoursAgo = currentTime - 5 * 60 * 60; //(changed to 5hrs)
       return epochTime >= twentyFourHoursAgo && epochTime <= currentTime;
     }
 
@@ -825,7 +875,7 @@ export class SoltrackerService {
         if (createdTime && marketCap) {
           if (
             isWithinLast24Hours(createdTime) &&
-            isMarketCapAboveThreshold(Number(marketCap), 1_500_000)
+            isMarketCapAboveThreshold(Number(marketCap), 1_000_000)
           ) {
             return true;
           }
@@ -857,6 +907,8 @@ export class SoltrackerService {
     this.logger.log('Executing token tracking cron job...');
     // Call the token tracking function
     await this.trackTokens(process.env.SOL_WALLET);
+
+    await this.checkNonAlertedTokens();
 
     // Fetch the current API call index from the database
     const apiIndex = await this.CallModel.findOne(); // Assume only one document exists
