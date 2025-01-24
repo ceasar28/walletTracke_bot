@@ -622,7 +622,7 @@ export class SoltrackerService {
           allTokens.map((token: any) => [token.tokenContractAddress, token]),
         );
         // Prepare database operations
-        const promises = filteredTransactions.map(async (tx) => {
+        for (const tx of filteredTransactions) {
           const tokenAddress = tx.bought.address;
           const tokenInDb = tokenMap.get(tokenAddress);
 
@@ -631,7 +631,7 @@ export class SoltrackerService {
               tokenInDb;
 
             // Skip if signature already processed
-            if (swapSignatures.includes(tx.transactionHash)) return;
+            if (swapSignatures.includes(tx.transactionHash)) continue;
 
             const newTokenBalance =
               parseFloat(tokenBalance) + parseFloat(tx.bought.amount);
@@ -677,7 +677,7 @@ export class SoltrackerService {
                   { new: true },
                 );
 
-                return;
+                continue;
               } else {
                 // Update token in database
                 await this.TokenModel.findByIdAndUpdate(
@@ -695,7 +695,7 @@ export class SoltrackerService {
                   { new: true },
                 );
 
-                return;
+                continue;
               }
             }
           } else {
@@ -733,21 +733,146 @@ export class SoltrackerService {
                   { _id: newToken._id },
                   { alerted: true, checked: true, done20k: true },
                 );
-                return;
+                continue;
               } else {
                 await this.TokenModel.updateOne(
                   { _id: newToken._id },
                   { checked: true, done20k: true },
                 );
-                return;
+                continue;
               }
             }
-            return;
+            continue;
           }
-        });
+        }
 
-        // Run all database operations in parallel
-        await Promise.all(promises);
+        // Prepare database operations
+        // const promises = filteredTransactions.map(async (tx) => {
+        //   const tokenAddress = tx.bought.address;
+        //   const tokenInDb = tokenMap.get(tokenAddress);
+
+        //   if (tokenInDb) {
+        //     const { tokenBalance, swapSignatures, usdAmount, solAmount } =
+        //       tokenInDb;
+
+        //     // Skip if signature already processed
+        //     if (swapSignatures.includes(tx.transactionHash)) return;
+
+        //     const newTokenBalance =
+        //       parseFloat(tokenBalance) + parseFloat(tx.bought.amount);
+        //     const newUsdAmountBalance =
+        //       parseFloat(usdAmount) + tx.sold.usdAmount;
+        //     const newSolAmountBalance =
+        //       parseFloat(solAmount) + parseFloat(tx.sold.amount);
+        //     const updatedHashes = [...swapSignatures, tx.transactionHash];
+
+        //     // Alert if balance exceeds threshold
+        //     if (
+        //       parseFloat(newUsdAmountBalance) >= 20000 &&
+        //       !tokenInDb.alerted
+        //     ) {
+        //       const meetsCriteria = await this.checkTokenTimeAndMarketCap(
+        //         tokenInDb.tokenContractAddress,
+        //       );
+        //       if (meetsCriteria === true) {
+        //         await this.sendTransactionDetails({
+        //           tokenContractAddress: tokenInDb.tokenContractAddress,
+        //           name: tokenInDb.name,
+        //           symbol: tokenInDb.symbol,
+        //           alertBuyTime: tx.blockTimestamp,
+        //           swapSignatures: updatedHashes,
+        //           solAmount: newSolAmountBalance,
+        //           usdAmount: newUsdAmountBalance,
+        //           tokenBalance: newTokenBalance,
+        //         });
+        //         await this.sendAlert(
+        //           tokenInDb.tokenContractAddress,
+        //           `${newTokenBalance}`,
+        //           tokenInDb.firstBuyTime,
+        //           updatedHashes,
+        //         );
+
+        //         await this.TokenModel.findByIdAndUpdate(
+        //           tokenInDb._id,
+        //           {
+        //             alerted: true,
+        //             checked: true,
+        //             done20k: true,
+        //           },
+        //           { new: true },
+        //         );
+
+        //         return;
+        //       } else {
+        //         // Update token in database
+        //         await this.TokenModel.findByIdAndUpdate(
+        //           tokenInDb._id,
+        //           {
+        //             tokenBalance: newTokenBalance,
+        //             swapSignatures: updatedHashes,
+        //             alertBuyTime: tx.blockTimestamp,
+        //             usdAmount: newUsdAmountBalance,
+        //             solAmount: newSolAmountBalance,
+        //             alerted: false,
+        //             checked: true,
+        //             done20k: false,
+        //           },
+        //           { new: true },
+        //         );
+
+        //         return;
+        //       }
+        //     }
+        //   } else {
+        //     // Handle new token not in database
+        //     const newToken = new this.TokenModel({
+        //       tokenContractAddress: tx.bought.address,
+        //       swapSignatures: [tx.transactionHash],
+        //       tokenBalance: tx.bought.amount,
+        //       firstBuyTime: tx.blockTimestamp,
+        //       alertBuyTime: tx.blockTimestamp,
+        //       name: tx.bought.name,
+        //       symbol: tx.bought.symbol,
+        //       usdAmount: tx.sold.usdAmount.toString(),
+        //       solAmount: tx.sold.amount,
+        //       // SolSpent: tx.amountspent,
+        //     });
+        //     await newToken.save();
+
+        //     // Alert if above threshold
+        //     if (parseFloat(newToken.usdAmount) >= 20000) {
+        //       const meetsCriteria = await this.checkTokenTimeAndMarketCap(
+        //         newToken.tokenContractAddress,
+        //       );
+
+        //       if (meetsCriteria === true) {
+        //         await this.sendTransactionDetails(newToken);
+        //         await this.sendAlert(
+        //           newToken.tokenContractAddress,
+        //           `${newToken.tokenBalance}`,
+        //           newToken.firstBuyTime,
+        //           newToken.swapSignatures,
+        //         );
+        //         // Mark as alerted
+        //         await this.TokenModel.updateOne(
+        //           { _id: newToken._id },
+        //           { alerted: true, checked: true, done20k: true },
+        //         );
+        //         return;
+        //       } else {
+        //         await this.TokenModel.updateOne(
+        //           { _id: newToken._id },
+        //           { checked: true, done20k: true },
+        //         );
+        //         return;
+        //       }
+        //     }
+        //     return;
+        //   }
+        // });
+
+        // // Run all database operations in parallel
+        // await Promise.all(promises);
       }
     } catch (error: any) {
       console.log(error);
